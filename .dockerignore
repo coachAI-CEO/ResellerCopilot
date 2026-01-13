@@ -1,0 +1,48 @@
+# Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Flutter
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Tests
+test/
+*.test.dart
+
+# Supabase local files (if any)
+.supabase/
+supabase/.temp/
+
+# Environment files
+.env
+.env.local
+*.env
+
+# Misc
+*.log
+*.swp
+*.swo
+*~
