@@ -26,6 +26,7 @@ class ScanResult with _$ScanResult {
     @JsonKey(name: 'sales_tax_amount') double? salesTaxAmount,
     @JsonKey(name: 'profit_calculation') String? profitCalculation,
     @JsonKey(name: 'market_analysis') String? marketAnalysis,
+    @JsonKey(name: 'condition') String? condition,
     @JsonKey(name: 'created_at') DateTime? createdAt,
   }) = _ScanResult;
 

@@ -16,6 +16,7 @@ class SupabaseService {
   /// [imageBytes] - The image bytes (required on web, optional on mobile)
   /// [barcode] - Optional barcode string
   /// [price] - The store price of the product
+  /// [condition] - Item condition: 'Used', 'New', or 'New in Box'
   /// 
   /// Returns a [ScanResult] with the analysis
   Future<ScanResult> analyzeItem({
@@ -23,6 +24,7 @@ class SupabaseService {
     Uint8List? imageBytes,
     String? barcode,
     required double price,
+    String condition = 'Used',
   }) async {
     try {
       // Verify user is authenticated and get fresh session
@@ -67,6 +69,7 @@ class SupabaseService {
         'image_base64': imageBase64,
         if (barcode != null) 'barcode': barcode,
         'store_price': price,
+        'condition': condition,
       };
 
       // Get the latest session token after potential refresh
@@ -113,6 +116,7 @@ class SupabaseService {
         shippingCost: (data['shipping_cost'] as num?)?.toDouble(),
         profitCalculation: data['profit_calculation'] as String?,
         marketAnalysis: data['market_analysis'] as String?,
+        condition: data['condition'] as String?,
       );
     } catch (e) {
       throw Exception('Error analyzing item: $e');
@@ -152,6 +156,7 @@ class SupabaseService {
         if (scan.shippingCost != null) 'shipping_cost': scan.shippingCost,
         if (scan.profitCalculation != null) 'profit_calculation': scan.profitCalculation,
         if (scan.marketAnalysis != null) 'market_analysis': scan.marketAnalysis,
+        if (scan.condition != null) 'condition': scan.condition,
       };
 
       // Insert into the scans table

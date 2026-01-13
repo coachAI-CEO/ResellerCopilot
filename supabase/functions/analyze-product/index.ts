@@ -114,7 +114,8 @@ serve(async (req) => {
       )
     }
 
-    const { image_base64, barcode, store_price } = requestBody || {}
+    const { image_base64, barcode, store_price, condition } = requestBody || {}
+    const itemCondition = condition || 'Used' // Default to 'Used' if not provided
 
     if (!GEMINI_API_KEY) {
       return new Response(
@@ -132,6 +133,13 @@ serve(async (req) => {
 
     // Prepare the system prompt
     const systemPrompt = `You are an expert reseller. Analyze this image/barcode. Identify the item. Research and provide detailed pricing information:
+
+IMPORTANT: The item condition is "${itemCondition}". Adjust all pricing estimates accordingly:
+- "Used": Price should reflect used/opened condition. Look for used item prices on eBay/Amazon.
+- "New": Price should reflect new/unopened condition. Look for new item prices.
+- "New in Box": Price should reflect new in box (NIB) condition, which often commands a premium over just "New". Look for NIB/BNIB prices.
+
+The condition significantly affects market value - used items are typically 30-50% less than new, while NIB can be 10-20% more than new.
 - eBay prices: ALWAYS check current eBay listings and recent sold prices. Provide this number.
 - Amazon prices: ALWAYS search for this item on Amazon. Look for current listings, sold prices, and the Buy Box price. If the item exists on Amazon, provide the price. If not available or out of stock, explicitly note this but still try to estimate based on similar items or historical data.
 - Current market price: The best estimate of what this item sells for currently
@@ -224,9 +232,9 @@ Summary: [Final verdict - best item? Good buy? Pass? Action recommendation]"`
       })
     }
 
-    // Add store price context
+    // Add store price and condition context
     geminiPayload.contents[0].parts.push({
-      text: `Store Price: $${store_price.toFixed(2)}`,
+      text: `Store Price: $${store_price.toFixed(2)}\nItem Condition: ${itemCondition}`,
     })
 
     // Call Gemini API

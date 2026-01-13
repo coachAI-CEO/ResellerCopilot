@@ -25,6 +25,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   Uint8List? _selectedImageBytes;
   String? _barcode;
   final TextEditingController _priceController = TextEditingController();
+  String _condition = 'Used'; // Default to 'Used'
   bool _isAnalyzing = false;
   ScanResult? _scanResult;
 
@@ -96,6 +97,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
         imageBytes: _selectedImageBytes!,
         barcode: _barcode,
         price: price,
+        condition: _condition,
       );
 
       // Save the scan to the database
@@ -247,6 +249,42 @@ class _ScannerScreenState extends State<ScannerScreen> {
               ),
               enabled: !_isAnalyzing,
             ),
+            const SizedBox(height: 16),
+
+            // Condition Selection
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Item Condition',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _buildConditionButton('Used', Icons.shopping_bag),
+                      ),
+                      Expanded(
+                        child: _buildConditionButton('New', Icons.new_releases),
+                      ),
+                      Expanded(
+                        child: _buildConditionButton('New in Box', Icons.inventory_2),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 24),
 
             // Scan Button
@@ -352,6 +390,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
                     ),
                     const SizedBox(height: 16),
                     _buildInfoRow('Product', _scanResult!.productName),
+                    if (_scanResult!.condition != null)
+                      _buildInfoRow('Condition', _scanResult!.condition!),
                     _buildInfoRow('Buy Price', '\$${_scanResult!.buyPrice.toStringAsFixed(2)}'),
                     const Divider(height: 24),
                     _buildInfoRow(
@@ -677,6 +717,44 @@ class _ScannerScreenState extends State<ScannerScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildConditionButton(String condition, IconData icon) {
+    final isSelected = _condition == condition;
+    return GestureDetector(
+      onTap: _isAnalyzing ? null : () {
+        setState(() {
+          _condition = condition;
+        });
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.blue.shade700 : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: isSelected ? Colors.white : Colors.grey.shade700,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              condition,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                color: isSelected ? Colors.white : Colors.grey.shade700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
