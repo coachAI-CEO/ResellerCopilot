@@ -137,6 +137,16 @@ supabase/
 - The app includes authentication with login/signup screens. Users must be authenticated to use the scanner.
 - The edge function expects the image as base64. For large images, consider compression or resizing.
 
+## Documentation
+
+Detailed project documentation has been added to the `docs/` folder. See:
+
+- `docs/OVERVIEW.md` — high-level description and feature list
+- `docs/SETUP.md` — step-by-step setup and environment guidance (macOS / zsh)
+- `docs/ARCHITECTURE.md` — component-level architecture and data flow
+
+Please read `docs/SETUP.md` before running the app.
+
 ## Critical Setup
 
 ⚠️ **IMPORTANT**: Before running the app, you must:
@@ -145,5 +155,9 @@ supabase/
 2. **Configure Supabase credentials** in `lib/main.dart`
 3. **Set up the database** (see Setup Instructions above)
 4. **Deploy the edge function** (see Setup Instructions above)
+
+## Security note
+
+I found Supabase credentials hard-coded in `lib/main.dart`. This is insecure. Remove any keys from source and instead load them from environment variables or a secure secrets manager. See `docs/SETUP.md` for recommended approaches (`flutter_dotenv`, CI secret injection, or Supabase secrets for edge functions).
 
 See `CRITICAL_SETUP.md` for detailed instructions.

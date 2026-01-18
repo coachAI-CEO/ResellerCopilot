@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/scan_result.dart';
 
@@ -53,7 +53,7 @@ class SupabaseService {
         debugPrint('Session refresh warning: $e');
       }
 
-      // Convert image to base64
+      // Convert image to base64, compressing first to reduce payload size
       Uint8List bytes;
       if (imageBytes != null) {
         bytes = imageBytes;
@@ -62,11 +62,74 @@ class SupabaseService {
       } else {
         throw Exception('Either image or imageBytes must be provided');
       }
-      final imageBase64 = base64Encode(bytes);
+
+      // Compress on mobile platforms to reduce size (skip on web)
+      if (!kIsWeb) {
+        try {
+          final compressed = await FlutterImageCompress.compressWithList(
+            bytes,
+            quality: 70,
+            format: CompressFormat.jpeg,
+          );
+          if (compressed.isNotEmpty) {
+            bytes = Uint8List.fromList(compressed);
+          }
+        } catch (e) {
+          debugPrint('Image compression failed, proceeding with original bytes: $e');
+        }
+      }
+
+      final bucketName = 'scans-temp';
+
+      String? signedUrl;
+
+      // Try to upload to Supabase Storage and create a short-lived signed URL
+      if (!kIsWeb) {
+        try {
+          final userId = _supabase.auth.currentUser?.id ?? 'anon';
+          final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          final filePath = 'uploads/$fileName';
+
+          // Write bytes to a temporary file for upload
+          final tempDir = Directory.systemTemp.createTempSync();
+          final tempFile = File('${tempDir.path}/$fileName');
+          await tempFile.writeAsBytes(bytes);
+
+          await _supabase.storage.from(bucketName).upload(filePath, tempFile);
+
+          // Create signed URL (expires in 60 seconds)
+          final signedRes = await _supabase.storage.from(bucketName).createSignedUrl(filePath, 60);
+          try {
+            final dyn = signedRes as dynamic;
+            if (dyn is Map && dyn['signedURL'] != null) {
+              signedUrl = dyn['signedURL'] as String;
+            } else if (dyn is String) {
+              signedUrl = dyn as String;
+            } else if (dyn?.data != null && dyn.data?.signedUrl != null) {
+              // Some SDKs return an object with a `data` property
+              signedUrl = dyn.data.signedUrl as String;
+            } else {
+              signedUrl = dyn?.toString();
+            }
+          } catch (_) {
+            signedUrl = signedRes?.toString();
+          }
+
+          // Clean up temp file
+          try {
+            await tempFile.delete();
+            await tempDir.delete();
+          } catch (_) {}
+        } catch (e) {
+          debugPrint('Storage upload failed, will fallback to base64: $e');
+          signedUrl = null;
+        }
+      }
 
       // Prepare the request payload
       final payload = {
-        'image_base64': imageBase64,
+        if (signedUrl != null) 'image_url': signedUrl,
+        if (signedUrl == null) 'image_base64': base64Encode(bytes),
         if (barcode != null) 'barcode': barcode,
         'store_price': price,
         'condition': condition,
@@ -89,8 +152,17 @@ class SupabaseService {
         if (error.toString().contains('401') || error.toString().contains('Unauthorized')) {
           throw Exception('Session expired. Please log out and log back in.');
         }
-        rethrow;
+        // Propagate the error
+        throw error;
       });
+
+      // DEBUG: log raw function response for troubleshooting (remove in production)
+      try {
+        debugPrint('analyze-product response status: ${response.status}');
+        debugPrint('analyze-product response data: ${response.data}');
+      } catch (e) {
+        debugPrint('Failed to print analyze-product response debug info: $e');
+      }
 
       if (response.status != 200) {
         final errorMessage = response.data is Map 
@@ -115,7 +187,8 @@ class SupabaseService {
         ebayPrice: (data['ebay_price'] as num?)?.toDouble(),
         ebayUrl: data['ebay_url'] as String?,
         amazonPrice: (data['amazon_price'] as num?)?.toDouble(),
-        amazonUrl: data['amazon_url'] as String?,
+  amazonUrl: data['amazon_url'] as String?,
+  amazonSearchUrl: data['amazon_search_url'] as String?,
         currentPrice: (data['current_price'] as num?)?.toDouble(),
         marketPriceSource: data['market_price_source'] as String?,
         salesTaxRate: (data['sales_tax_rate'] as num?)?.toDouble(),
@@ -156,7 +229,11 @@ class SupabaseService {
         'verdict': scan.verdict,
         'velocity_score': scan.velocityScore,
         if (scan.ebayPrice != null) 'ebay_price': scan.ebayPrice,
+  if (scan.ebayUrl != null) 'ebay_url': scan.ebayUrl,
+  if (scan.ebaySearchUrl != null) 'ebay_search_url': scan.ebaySearchUrl,
         if (scan.amazonPrice != null) 'amazon_price': scan.amazonPrice,
+  if (scan.amazonUrl != null) 'amazon_url': scan.amazonUrl,
+  if (scan.amazonSearchUrl != null) 'amazon_search_url': scan.amazonSearchUrl,
         if (scan.currentPrice != null) 'current_price': scan.currentPrice,
         if (scan.marketPriceSource != null) 'market_price_source': scan.marketPriceSource,
         if (scan.salesTaxRate != null) 'sales_tax_rate': scan.salesTaxRate,
@@ -171,14 +248,19 @@ class SupabaseService {
       };
 
       // Insert into the scans table
-      final response = await _supabase
-          .from('scans')
-          .insert(scanData)
-          .select()
-          .single();
+    final response = await _supabase
+      .from('scans')
+      .insert(scanData)
+      .select('*')
+      .single();
+
+      // DEBUG: log the insert response for troubleshooting
+      try {
+        debugPrint('saveScan insert response: $response');
+      } catch (_) {}
 
       // Parse the response and return the ScanResult with id
-      return ScanResult.fromJson(response);
+      return ScanResult.fromJson(response as Map<String, dynamic>);
     } catch (e) {
       throw Exception('Error saving scan: $e');
     }
@@ -192,11 +274,16 @@ class SupabaseService {
         throw Exception('User not authenticated');
       }
 
-      final response = await _supabase
-          .from('scans')
-          .select()
-          .eq('user_id', user.id)
-          .order('created_at', ascending: false);
+    final response = await _supabase
+      .from('scans')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', ascending: false);
+
+      // DEBUG: log the raw response to help debug 400/REST issues
+      try {
+        debugPrint('getScans response raw: $response');
+      } catch (_) {}
 
       return (response as List)
           .map((json) => ScanResult.fromJson(json as Map<String, dynamic>))

@@ -13,6 +13,11 @@ dependencies:
   # Supabase
   supabase_flutter: ^2.0.0
   
+  # Environment variables
+  flutter_dotenv: ^5.0.2
+  # Image compression to reduce payload size before sending to edge function
+  flutter_image_compress: ^1.1.0
+  
   # State Management (using Riverpod as recommended)
   flutter_riverpod: ^2.4.0
   
@@ -23,8 +28,8 @@ dependencies:
   url_launcher: ^6.2.0
   
   # JSON Serialization
-  freezed_annotation: ^2.4.0
-  json_annotation: ^4.8.0
+  freezed_annotation: ^3.1.0
+  json_annotation: ^4.8.1
 
 dev_dependencies:
   flutter_test:
@@ -32,9 +37,11 @@ dev_dependencies:
   flutter_lints: ^3.0.0
   
   # Code Generation
-  build_runner: ^2.4.0
-  freezed: ^2.4.0
-  json_serializable: ^6.7.0
+  build_runner: ^2.10.5
+  freezed: ^3.2.4
+  json_serializable: ^6.11.4
 
 flutter:
   uses-material-design: true
+  assets:
+    - .env

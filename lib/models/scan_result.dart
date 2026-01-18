@@ -4,7 +4,7 @@ part 'scan_result.freezed.dart';
 part 'scan_result.g.dart';
 
 @freezed
-class ScanResult with _$ScanResult {
+abstract class ScanResult with _$ScanResult {
   const factory ScanResult({
     String? id,
     @JsonKey(name: 'user_id') String? userId,
@@ -17,8 +17,10 @@ class ScanResult with _$ScanResult {
     @JsonKey(name: 'velocity_score') required String velocityScore, // 'High', 'Med', 'Low'
     @JsonKey(name: 'ebay_price') double? ebayPrice,
     @JsonKey(name: 'ebay_url') String? ebayUrl,
+  @JsonKey(name: 'ebay_search_url') String? ebaySearchUrl,
     @JsonKey(name: 'amazon_price') double? amazonPrice,
     @JsonKey(name: 'amazon_url') String? amazonUrl,
+  @JsonKey(name: 'amazon_search_url') String? amazonSearchUrl,
     @JsonKey(name: 'current_price') double? currentPrice,
     @JsonKey(name: 'market_price_source') String? marketPriceSource,
     @JsonKey(name: 'fee_percentage') double? feePercentage,

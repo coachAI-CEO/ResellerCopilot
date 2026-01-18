@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import Ajv from 'https://esm.sh/ajv@8'
 
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent'
@@ -114,8 +115,30 @@ serve(async (req) => {
       )
     }
 
-    const { image_base64, barcode, store_price, condition } = requestBody || {}
+    let { image_base64, image_url, barcode, store_price, condition } = requestBody || {}
     const itemCondition = condition || 'Used' // Default to 'Used' if not provided
+
+    // If an image_url is provided, fetch the image and convert it to base64
+    if (!image_base64 && image_url) {
+      try {
+        const imgResp = await fetch(image_url)
+        if (!imgResp.ok) {
+          console.error('Failed to fetch image_url:', image_url, imgResp.status)
+        } else {
+          const arrayBuffer = await imgResp.arrayBuffer()
+          // Convert ArrayBuffer to base64 safely in chunks
+          const bytes = new Uint8Array(arrayBuffer)
+          let binary = ''
+          const chunkSize = 0x8000
+          for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+          }
+          image_base64 = typeof btoa === 'function' ? btoa(binary) : Buffer.from(binary, 'binary').toString('base64')
+        }
+      } catch (err) {
+        console.error('Error fetching/encoding image_url:', err)
+      }
+    }
 
     if (!GEMINI_API_KEY) {
       return new Response(
@@ -131,8 +154,9 @@ serve(async (req) => {
       )
     }
 
-    // Prepare the system prompt
-    const systemPrompt = `You are an expert reseller. Analyze this image/barcode. Identify the item. Research and provide detailed pricing information:
+  // Prepare the system prompt
+  // NOTE: Request the model to return ONLY a single JSON object and nothing else to make parsing reliable.
+  const systemPrompt = `You are an expert reseller. Analyze this image/barcode. Identify the item. Research and provide detailed pricing information. IMPORTANT: Respond with ONLY a single JSON object (no markdown, no surrounding explanation) with the exact fields requested below. If you cannot provide a field, set it to null.
 
 IMPORTANT: The item condition is "${itemCondition}". Adjust all pricing estimates accordingly:
 - "Used": Price should reflect used/opened condition. Look for used item prices on eBay/Amazon.
@@ -240,7 +264,7 @@ Summary: [Final verdict - best item? Good buy? Pass? Action recommendation]"`
       text: `Store Price: $${store_price.toFixed(2)}\nItem Condition: ${itemCondition}`,
     })
 
-    // Call Gemini API
+  // Call Gemini API
     console.log('Calling Gemini API...', { 
       url: GEMINI_API_URL,
       hasImage: !!image_base64,
@@ -292,19 +316,65 @@ Summary: [Final verdict - best item? Good buy? Pass? Action recommendation]"`
     }
 
     // Parse the JSON response from Gemini
-    let analysisResult
+    let analysisResult: any
     try {
-      // Extract JSON from the response (in case it's wrapped in markdown or text)
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        analysisResult = JSON.parse(jsonMatch[0])
-      } else {
-        throw new Error('No JSON found in response')
+      // Try to parse the entire response as JSON first (model instructed to return only JSON)
+      analysisResult = JSON.parse(responseText)
+    } catch (firstParseError) {
+      try {
+        // Fallback: extract first JSON substring
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          analysisResult = JSON.parse(jsonMatch[0])
+        } else {
+          throw new Error('No JSON found in response')
+        }
+      } catch (secondParseError) {
+        console.error('Failed to parse Gemini response:', responseText)
+        return new Response(
+          JSON.stringify({ error: 'Failed to parse AI response', raw_response: responseText }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
       }
-    } catch (parseError) {
-      console.error('Failed to parse Gemini response:', responseText)
+    }
+
+    // Use Ajv to validate the returned JSON against an expected schema
+    const ajv = new Ajv()
+    const schema = {
+      type: 'object',
+      properties: {
+        verdict: { type: 'string' },
+        market_price: { type: 'number' },
+        net_profit: { type: 'number' },
+        product_name: { type: 'string' },
+        velocity_score: { type: 'string' },
+        ebay_price: { type: ['number', 'null'] },
+        ebay_url: { type: ['string', 'null'] },
+        amazon_price: { type: ['number', 'null'] },
+        amazon_url: { type: ['string', 'null'] },
+  ebay_search_url: { type: ['string', 'null'] },
+  amazon_search_url: { type: ['string', 'null'] },
+        current_price: { type: ['number', 'null'] },
+        market_price_source: { type: ['string', 'null'] },
+        sales_tax_rate: { type: ['number', 'null'] },
+        sales_tax_amount: { type: ['number', 'null'] },
+        fee_percentage: { type: ['number', 'null'] },
+        fees_amount: { type: ['number', 'null'] },
+        shipping_cost: { type: ['number', 'null'] },
+        profit_calculation: { type: ['string', 'null'] },
+        market_analysis: { type: ['string', 'null'] },
+        product_image_url: { type: ['string', 'null'] },
+      },
+      required: ['verdict', 'market_price', 'net_profit', 'product_name', 'velocity_score'],
+      additionalProperties: true,
+    }
+
+    const validate = ajv.compile(schema)
+    const valid = validate(analysisResult)
+    if (!valid) {
+      console.error('Ajv validation errors:', validate.errors)
       return new Response(
-        JSON.stringify({ error: 'Failed to parse AI response', raw_response: responseText }),
+        JSON.stringify({ error: 'Invalid AI response schema', details: validate.errors, raw_response: responseText }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -325,6 +395,30 @@ Summary: [Final verdict - best item? Good buy? Pass? Action recommendation]"`
     const amazonPrice = analysisResult.amazon_price ? parseFloat(analysisResult.amazon_price) : null
     const amazonUrl = analysisResult.amazon_url || null
     const currentPrice = analysisResult.current_price ? parseFloat(analysisResult.current_price) : null
+    
+      // Helper to validate that a marketplace URL actually resolves (not 404).
+      // Uses a GET request with a common User-Agent to reduce chance of bot blocking.
+      async function validateUrl(url: string | null) {
+        if (!url) return null
+        try {
+          const resp = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            },
+          })
+          // Treat 2xx and 3xx as valid (followed redirects ok)
+          if (resp && resp.status >= 200 && resp.status < 400) {
+            return url
+          }
+          console.warn('validateUrl: non-OK status', { url, status: resp.status })
+          return null
+        } catch (err) {
+          console.warn('validateUrl error for', url, err)
+          return null
+        }
+      }
     const marketPriceSource = analysisResult.market_price_source || 'Market analysis'
     const salesTaxRate = analysisResult.sales_tax_rate ? parseFloat(analysisResult.sales_tax_rate) : 8
     const salesTaxAmount = analysisResult.sales_tax_amount ? parseFloat(analysisResult.sales_tax_amount) : (store_price * salesTaxRate / 100)
@@ -333,6 +427,14 @@ Summary: [Final verdict - best item? Good buy? Pass? Action recommendation]"`
     const shippingCost = analysisResult.shipping_cost ? parseFloat(analysisResult.shipping_cost) : null
     const profitCalculation = analysisResult.profit_calculation || 
       `$${marketPrice.toFixed(2)} market price - $${store_price.toFixed(2)} buy price - $${salesTaxAmount.toFixed(2)} sales tax (${salesTaxRate}%) - $${feesAmount.toFixed(2)} fees (${feePercentage}%)${shippingCost ? ` - $${shippingCost.toFixed(2)} shipping` : ''} = $${netProfit.toFixed(2)} profit`
+
+    // Validate marketplace URLs and prepare helpful search fallbacks
+    const validEbayUrl = await validateUrl(ebayUrl)
+    const validAmazonUrl = await validateUrl(amazonUrl)
+
+    // Fallback search URLs (useful if the AI-provided direct link is dead)
+    const ebaySearchUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(productName)}`
+    const amazonSearchUrl = `https://www.amazon.com/s?k=${encodeURIComponent(productName)}`
 
     // Return the analysis result
     return new Response(
@@ -344,9 +446,11 @@ Summary: [Final verdict - best item? Good buy? Pass? Action recommendation]"`
         velocity_score: velocityScore,
         product_name: productName,
         ebay_price: ebayPrice,
-        ebay_url: ebayUrl,
+          ebay_url: validEbayUrl,
+          ebay_search_url: validEbayUrl ? null : ebaySearchUrl,
         amazon_price: amazonPrice,
-        amazon_url: amazonUrl,
+          amazon_url: validAmazonUrl,
+          amazon_search_url: validAmazonUrl ? null : amazonSearchUrl,
         current_price: currentPrice,
         market_price_source: marketPriceSource,
         sales_tax_rate: salesTaxRate,

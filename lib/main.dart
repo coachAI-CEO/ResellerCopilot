@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'screens/auth_screen.dart';
 import 'screens/scanner_screen.dart';
 import 'services/supabase_service.dart';
@@ -7,10 +8,27 @@ import 'services/supabase_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Supabase
+  // Load environment variables (see .env.example)
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    // On web builds or local dev, the .env file may be missing from assets.
+    // Don't crash the app here; surface a helpful log and continue so tests or
+    // alternate env injection can work.
+    debugPrint('Warning: .env not found or failed to load: $e');
+  }
+
+  final supabaseUrl = dotenv.env['SUPABASE_URL'];
+  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+
+  if (supabaseUrl == null || supabaseAnonKey == null) {
+    throw Exception('Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables. See .env.example');
+  }
+
+  // Initialize Supabase using environment variables
   await Supabase.initialize(
-    url: 'https://pzhpkoiqcutkcaudrazn.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6aHBrb2lxY3V0a2NhdWRyYXpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxODIxNzgsImV4cCI6MjA4Mzc1ODE3OH0.Dviqpt3U5qav3smWpPdrXL8puOIWP1cGh8oAxytfLQQ',
+    url: supabaseUrl,
+    anonKey: supabaseAnonKey,
   );
 
   runApp(const MyApp());

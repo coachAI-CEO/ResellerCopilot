@@ -503,7 +503,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                         ? '\$${_scanResult!.ebayPrice!.toStringAsFixed(2)}'
                         : 'N/A',
                       isMissing: _scanResult!.ebayPrice == null,
-                      url: _scanResult!.ebayUrl,
+                      url: _scanResult!.ebayUrl ?? _scanResult!.ebaySearchUrl,
                     ),
                     _buildInfoRow(
                       'Amazon Price', 
@@ -511,7 +511,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                         ? '\$${_scanResult!.amazonPrice!.toStringAsFixed(2)}'
                         : 'Not available',
                       isMissing: _scanResult!.amazonPrice == null,
-                      url: _scanResult!.amazonUrl,
+                      url: _scanResult!.amazonUrl ?? _scanResult!.amazonSearchUrl,
                     ),
                     if (_scanResult!.currentPrice != null)
                       _buildInfoRow(
