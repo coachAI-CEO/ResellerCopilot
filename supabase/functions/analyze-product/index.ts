@@ -166,7 +166,9 @@ Return JSON with these exact fields:
   "verdict": "BUY" or "PASS",
   "market_price": number (ESTIMATED SELLING PRICE - what you can realistically sell for, based on recent COMPLETED/SOLD listings, NOT asking prices. This is the key number for profit calculation),
   "ebay_price": number (current eBay listing price or average of recent sold listings - specify which),
+  "ebay_url": string (URL to the actual eBay product listing page if available, otherwise null),
   "amazon_price": number (current Amazon listing price if available),
+  "amazon_url": string (URL to the actual Amazon product listing page if available, otherwise null),
   "current_price": number (lowest current listing price across platforms - what you could buy it for right now, useful for market context),
   "market_price_source": string (explanation of where market_price comes from, e.g., "Average of 5 recent eBay sold listings", "Amazon sold listings average", "Average of recent eBay and Amazon completed sales"),
   "net_profit": number (calculated as: market_price - store_price - sales_tax - fees - shipping),
@@ -319,7 +321,9 @@ Summary: [Final verdict - best item? Good buy? Pass? Action recommendation]"`
     const marketAnalysis = analysisResult.market_analysis || null
     const productImageUrl = analysisResult.product_image_url || null
     const ebayPrice = analysisResult.ebay_price ? parseFloat(analysisResult.ebay_price) : null
+    const ebayUrl = analysisResult.ebay_url || null
     const amazonPrice = analysisResult.amazon_price ? parseFloat(analysisResult.amazon_price) : null
+    const amazonUrl = analysisResult.amazon_url || null
     const currentPrice = analysisResult.current_price ? parseFloat(analysisResult.current_price) : null
     const marketPriceSource = analysisResult.market_price_source || 'Market analysis'
     const salesTaxRate = analysisResult.sales_tax_rate ? parseFloat(analysisResult.sales_tax_rate) : 8
@@ -340,7 +344,9 @@ Summary: [Final verdict - best item? Good buy? Pass? Action recommendation]"`
         velocity_score: velocityScore,
         product_name: productName,
         ebay_price: ebayPrice,
+        ebay_url: ebayUrl,
         amazon_price: amazonPrice,
+        amazon_url: amazonUrl,
         current_price: currentPrice,
         market_price_source: marketPriceSource,
         sales_tax_rate: salesTaxRate,

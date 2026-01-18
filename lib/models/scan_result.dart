@@ -16,7 +16,9 @@ class ScanResult with _$ScanResult {
     required String verdict, // 'BUY' or 'PASS'
     @JsonKey(name: 'velocity_score') required String velocityScore, // 'High', 'Med', 'Low'
     @JsonKey(name: 'ebay_price') double? ebayPrice,
+    @JsonKey(name: 'ebay_url') String? ebayUrl,
     @JsonKey(name: 'amazon_price') double? amazonPrice,
+    @JsonKey(name: 'amazon_url') String? amazonUrl,
     @JsonKey(name: 'current_price') double? currentPrice,
     @JsonKey(name: 'market_price_source') String? marketPriceSource,
     @JsonKey(name: 'fee_percentage') double? feePercentage,

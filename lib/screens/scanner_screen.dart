@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/supabase_service.dart';
 import '../models/scan_result.dart';
 
@@ -502,6 +503,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                         ? '\$${_scanResult!.ebayPrice!.toStringAsFixed(2)}'
                         : 'N/A',
                       isMissing: _scanResult!.ebayPrice == null,
+                      url: _scanResult!.ebayUrl,
                     ),
                     _buildInfoRow(
                       'Amazon Price', 
@@ -509,6 +511,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                         ? '\$${_scanResult!.amazonPrice!.toStringAsFixed(2)}'
                         : 'Not available',
                       isMissing: _scanResult!.amazonPrice == null,
+                      url: _scanResult!.amazonUrl,
                     ),
                     if (_scanResult!.currentPrice != null)
                       _buildInfoRow(
@@ -745,7 +748,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
   }
 
-  Widget _buildInfoRow(String label, String value, {bool isProfit = false, bool isMissing = false, String? tooltip, bool isImportant = false, bool allowWrap = false}) {
+  Widget _buildInfoRow(String label, String value, {bool isProfit = false, bool isMissing = false, String? tooltip, bool isImportant = false, bool allowWrap = false, String? url}) {
     Widget labelWidget = Text(
       label,
       style: TextStyle(
@@ -815,27 +818,73 @@ class _ScannerScreenState extends State<ScannerScreen> {
           const SizedBox(width: 8),
           Flexible(
             flex: 2,
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: isImportant ? 17 : 16,
-                fontWeight: FontWeight.bold,
-                color: isProfit
-                    ? (_scanResult!.netProfit >= 0
-                        ? Colors.green.shade700
-                        : Colors.red.shade700)
-                    : isMissing
-                        ? Colors.grey.shade500
-                        : isImportant
-                            ? Colors.blue.shade700
-                            : Colors.black87,
-                fontStyle: isMissing ? FontStyle.italic : FontStyle.normal,
-              ),
-              textAlign: TextAlign.end,
-              maxLines: null,
-              softWrap: true,
-              overflow: TextOverflow.visible,
-            ),
+            child: url != null && url.isNotEmpty
+                ? InkWell(
+                    onTap: () async {
+                      final uri = Uri.parse(url);
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      }
+                    },
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            value,
+                            style: TextStyle(
+                              fontSize: isImportant ? 17 : 16,
+                              fontWeight: FontWeight.bold,
+                              color: isProfit
+                                  ? (_scanResult!.netProfit >= 0
+                                      ? Colors.green.shade700
+                                      : Colors.red.shade700)
+                                  : isMissing
+                                      ? Colors.grey.shade500
+                                      : isImportant
+                                          ? Colors.blue.shade700
+                                          : Colors.blue.shade600,
+                              fontStyle: isMissing ? FontStyle.italic : FontStyle.normal,
+                              decoration: TextDecoration.underline,
+                              decorationColor: isMissing ? Colors.grey.shade500 : Colors.blue.shade600,
+                            ),
+                            textAlign: TextAlign.end,
+                            maxLines: null,
+                            softWrap: true,
+                            overflow: TextOverflow.visible,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.open_in_new,
+                          size: 14,
+                          color: isMissing ? Colors.grey.shade500 : Colors.blue.shade600,
+                        ),
+                      ],
+                    ),
+                  )
+                : Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: isImportant ? 17 : 16,
+                      fontWeight: FontWeight.bold,
+                      color: isProfit
+                          ? (_scanResult!.netProfit >= 0
+                              ? Colors.green.shade700
+                              : Colors.red.shade700)
+                          : isMissing
+                              ? Colors.grey.shade500
+                              : isImportant
+                                  ? Colors.blue.shade700
+                                  : Colors.black87,
+                      fontStyle: isMissing ? FontStyle.italic : FontStyle.normal,
+                    ),
+                    textAlign: TextAlign.end,
+                    maxLines: null,
+                    softWrap: true,
+                    overflow: TextOverflow.visible,
+                  ),
           ),
         ],
       ),

@@ -19,6 +19,9 @@ dependencies:
   # Image Picker
   image_picker: ^1.0.0
   
+  # URL Launcher
+  url_launcher: ^6.2.0
+  
   # JSON Serialization
   freezed_annotation: ^2.4.0
   json_annotation: ^4.8.0
