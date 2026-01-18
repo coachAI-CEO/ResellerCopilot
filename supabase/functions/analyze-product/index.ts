@@ -140,8 +140,8 @@ IMPORTANT: The item condition is "${itemCondition}". Adjust all pricing estimate
 - "New in Box": Price should reflect new in box (NIB) condition, which often commands a premium over just "New". Look for NIB/BNIB prices.
 
 The condition significantly affects market value - used items are typically 30-50% less than new, while NIB can be 10-20% more than new.
-- eBay prices: ALWAYS check current eBay listings and recent sold prices. Provide this number. Also extract the main product image URL from eBay listings if available.
-- Amazon prices: ALWAYS search for this item on Amazon. Look for current listings, sold prices, and the Buy Box price. If the item exists on Amazon, provide the price and extract the main product image URL. If not available or out of stock, explicitly note this but still try to estimate based on similar items or historical data.
+- eBay prices: ALWAYS check current eBay listings and recent sold prices. Provide this number AND the direct URL to the eBay product listing page (ebay_url). The URL should be a full link like "https://www.ebay.com/itm/..." that users can click to view the listing. If you find the price, you MUST try to provide the URL. If no URL can be determined, use null.
+- Amazon prices: ALWAYS search for this item on Amazon. Look for current listings, sold prices, and the Buy Box price. If the item exists on Amazon, provide the price AND the direct URL to the Amazon product listing page (amazon_url). The URL should be a full link like "https://www.amazon.com/dp/..." or "https://www.amazon.com/.../dp/..." that users can click to view the product. If you find the price, you MUST try to provide the URL. If no URL can be determined, use null.
 - Current market price: The best estimate of what this item sells for currently
 - Market price source: Specify where you found the market price (e.g., "eBay sold listings average", "Amazon current listings", "Average of eBay and Amazon sold prices")
 
@@ -166,9 +166,9 @@ Return JSON with these exact fields:
   "verdict": "BUY" or "PASS",
   "market_price": number (ESTIMATED SELLING PRICE - what you can realistically sell for, based on recent COMPLETED/SOLD listings, NOT asking prices. This is the key number for profit calculation),
   "ebay_price": number (current eBay listing price or average of recent sold listings - specify which),
-  "ebay_url": string (URL to the actual eBay product listing page if available, otherwise null),
+  "ebay_url": string (CRITICAL: When you provide ebay_price, you MUST also provide the direct URL to the eBay product listing page. Format: "https://www.ebay.com/itm/..." or "https://www.ebay.com/p/...". This URL should be clickable and take users directly to the listing. If you cannot find the URL, use null),
   "amazon_price": number (current Amazon listing price if available),
-  "amazon_url": string (URL to the actual Amazon product listing page if available, otherwise null),
+  "amazon_url": string (CRITICAL: When you provide amazon_price, you MUST also provide the direct URL to the Amazon product listing page. Format: "https://www.amazon.com/dp/..." or "https://www.amazon.com/.../dp/...". This URL should be clickable and take users directly to the product page. If you cannot find the URL, use null),
   "current_price": number (lowest current listing price across platforms - what you could buy it for right now, useful for market context),
   "market_price_source": string (explanation of where market_price comes from, e.g., "Average of 5 recent eBay sold listings", "Amazon sold listings average", "Average of recent eBay and Amazon completed sales"),
   "net_profit": number (calculated as: market_price - store_price - sales_tax - fees - shipping),
