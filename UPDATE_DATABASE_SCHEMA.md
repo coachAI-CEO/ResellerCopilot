@@ -75,7 +75,35 @@ COMMENT ON COLUMN scans.market_analysis IS 'Comprehensive market analysis includ
 ```
 
 9. Click **Run**
-10. You should see "Success. No rows returned" for all migrations
+
+#### Fourth Migration: Product Image URL Column
+10. Create a new query and paste this SQL:
+
+```sql
+-- Add new column for product image URL from marketplace
+ALTER TABLE scans 
+  ADD COLUMN IF NOT EXISTS product_image_url TEXT;
+
+-- Add comment to document the column
+COMMENT ON COLUMN scans.product_image_url IS 'URL to actual product image from eBay, Amazon, or other marketplace (not the scanned photo)';
+```
+
+11. Click **Run**
+
+#### Fifth Migration: Condition Column (if not already added)
+12. Create a new query and paste this SQL:
+
+```sql
+-- Add new column for item condition
+ALTER TABLE scans 
+  ADD COLUMN IF NOT EXISTS condition TEXT CHECK (condition IN ('Used', 'New', 'New in Box'));
+
+-- Add comment to document the column
+COMMENT ON COLUMN scans.condition IS 'Item condition: Used, New, or New in Box';
+```
+
+13. Click **Run**
+14. You should see "Success. No rows returned" for all migrations
 
 ### Option 2: Use Supabase CLI
 
