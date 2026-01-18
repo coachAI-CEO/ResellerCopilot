@@ -83,7 +83,14 @@ class SupabaseService {
       final response = await _supabase.functions.invoke(
         'analyze-product',
         body: payload,
-      );
+      ).catchError((error) {
+        debugPrint('Edge function call error: $error');
+        // If it's an auth error, suggest re-login
+        if (error.toString().contains('401') || error.toString().contains('Unauthorized')) {
+          throw Exception('Session expired. Please log out and log back in.');
+        }
+        rethrow;
+      });
 
       if (response.status != 200) {
         final errorMessage = response.data is Map 
