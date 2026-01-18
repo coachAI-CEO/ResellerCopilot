@@ -389,7 +389,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    _buildInfoRow('Product', _scanResult!.productName),
+                    _buildInfoRow('Product', _scanResult!.productName, allowWrap: true),
                     if (_scanResult!.condition != null)
                       _buildInfoRow('Condition', _scanResult!.condition!),
                     _buildInfoRow('Buy Price', '\$${_scanResult!.buyPrice.toStringAsFixed(2)}'),
@@ -643,7 +643,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
   }
 
-  Widget _buildInfoRow(String label, String value, {bool isProfit = false, bool isMissing = false, String? tooltip, bool isImportant = false}) {
+  Widget _buildInfoRow(String label, String value, {bool isProfit = false, bool isMissing = false, String? tooltip, bool isImportant = false, bool allowWrap = false}) {
     Widget labelWidget = Text(
       label,
       style: TextStyle(
@@ -667,27 +667,72 @@ class _ScannerScreenState extends State<ScannerScreen> {
       );
     }
     
+    // If wrapping is allowed (like for product names), use Column layout
+    if (allowWrap) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            labelWidget,
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: isImportant ? 17 : 16,
+                fontWeight: FontWeight.bold,
+                color: isProfit
+                    ? (_scanResult!.netProfit >= 0
+                        ? Colors.green.shade700
+                        : Colors.red.shade700)
+                    : isMissing
+                        ? Colors.grey.shade500
+                        : isImportant
+                            ? Colors.blue.shade700
+                            : Colors.black87,
+                fontStyle: isMissing ? FontStyle.italic : FontStyle.normal,
+              ),
+              maxLines: null,
+              softWrap: true,
+            ),
+          ],
+        ),
+      );
+    }
+    
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Flexible(child: labelWidget),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: isImportant ? 17 : 16,
-              fontWeight: FontWeight.bold,
-              color: isProfit
-                  ? (_scanResult!.netProfit >= 0
-                      ? Colors.green.shade700
-                      : Colors.red.shade700)
-                  : isMissing
-                      ? Colors.grey.shade500
-                      : isImportant
-                          ? Colors.blue.shade700
-                          : Colors.black87,
-              fontStyle: isMissing ? FontStyle.italic : FontStyle.normal,
+          Flexible(
+            child: labelWidget,
+            flex: 1,
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            flex: 2,
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: isImportant ? 17 : 16,
+                fontWeight: FontWeight.bold,
+                color: isProfit
+                    ? (_scanResult!.netProfit >= 0
+                        ? Colors.green.shade700
+                        : Colors.red.shade700)
+                    : isMissing
+                        ? Colors.grey.shade500
+                        : isImportant
+                            ? Colors.blue.shade700
+                            : Colors.black87,
+                fontStyle: isMissing ? FontStyle.italic : FontStyle.normal,
+              ),
+              textAlign: TextAlign.end,
+              maxLines: null,
+              softWrap: true,
+              overflow: TextOverflow.visible,
             ),
           ),
         ],
