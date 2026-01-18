@@ -117,6 +117,7 @@ class SupabaseService {
         profitCalculation: data['profit_calculation'] as String?,
         marketAnalysis: data['market_analysis'] as String?,
         condition: data['condition'] as String?,
+        productImageUrl: data['product_image_url'] as String?,
       );
     } catch (e) {
       throw Exception('Error analyzing item: $e');
@@ -157,6 +158,7 @@ class SupabaseService {
         if (scan.profitCalculation != null) 'profit_calculation': scan.profitCalculation,
         if (scan.marketAnalysis != null) 'market_analysis': scan.marketAnalysis,
         if (scan.condition != null) 'condition': scan.condition,
+        if (scan.productImageUrl != null) 'product_image_url': scan.productImageUrl,
       };
 
       // Insert into the scans table

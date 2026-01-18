@@ -140,8 +140,8 @@ IMPORTANT: The item condition is "${itemCondition}". Adjust all pricing estimate
 - "New in Box": Price should reflect new in box (NIB) condition, which often commands a premium over just "New". Look for NIB/BNIB prices.
 
 The condition significantly affects market value - used items are typically 30-50% less than new, while NIB can be 10-20% more than new.
-- eBay prices: ALWAYS check current eBay listings and recent sold prices. Provide this number.
-- Amazon prices: ALWAYS search for this item on Amazon. Look for current listings, sold prices, and the Buy Box price. If the item exists on Amazon, provide the price. If not available or out of stock, explicitly note this but still try to estimate based on similar items or historical data.
+- eBay prices: ALWAYS check current eBay listings and recent sold prices. Provide this number. Also extract the main product image URL from eBay listings if available.
+- Amazon prices: ALWAYS search for this item on Amazon. Look for current listings, sold prices, and the Buy Box price. If the item exists on Amazon, provide the price and extract the main product image URL. If not available or out of stock, explicitly note this but still try to estimate based on similar items or historical data.
 - Current market price: The best estimate of what this item sells for currently
 - Market price source: Specify where you found the market price (e.g., "eBay sold listings average", "Amazon current listings", "Average of eBay and Amazon sold prices")
 
@@ -179,6 +179,7 @@ Return JSON with these exact fields:
   "reasoning": string,
   "velocity_score": "High" or "Med" or "Low",
   "product_name": string,
+  "product_image_url": string (CRITICAL: Provide a direct image URL of the actual product from eBay, Amazon, or other marketplace listings. This should be the product's official image from online listings, NOT the scanned photo. Look for product images in the listings you're analyzing. The URL should be a direct image link (ending in .jpg, .png, etc.) that can be displayed. If you cannot find a product image URL, use null),
   "market_analysis": string (comprehensive market analysis in the following format:
 
 "Market Analysis
@@ -316,6 +317,7 @@ Summary: [Final verdict - best item? Good buy? Pass? Action recommendation]"`
     const productName = analysisResult.product_name || 'Unknown Product'
     const reasoning = analysisResult.reasoning || 'No reasoning provided'
     const marketAnalysis = analysisResult.market_analysis || null
+    const productImageUrl = analysisResult.product_image_url || null
     const ebayPrice = analysisResult.ebay_price ? parseFloat(analysisResult.ebay_price) : null
     const amazonPrice = analysisResult.amazon_price ? parseFloat(analysisResult.amazon_price) : null
     const currentPrice = analysisResult.current_price ? parseFloat(analysisResult.current_price) : null
@@ -348,6 +350,7 @@ Summary: [Final verdict - best item? Good buy? Pass? Action recommendation]"`
         shipping_cost: shippingCost,
         profit_calculation: profitCalculation,
         market_analysis: marketAnalysis,
+        product_image_url: productImageUrl,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

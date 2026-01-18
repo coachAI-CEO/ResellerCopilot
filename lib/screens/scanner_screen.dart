@@ -331,8 +331,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Product Photo in Results
-                    if (_selectedImageBytes != null) ...[
+                    // Product Photo from Marketplace
+                    if (_scanResult!.productImageUrl != null) ...[
                       Container(
                         width: double.infinity,
                         height: 200,
@@ -343,20 +343,93 @@ class _ScannerScreenState extends State<ScannerScreen> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: kIsWeb
-                              ? Image.memory(
-                                  _selectedImageBytes!,
-                                  fit: BoxFit.cover,
-                                )
-                              : _selectedImage != null
-                                  ? Image.file(
-                                      _selectedImage!,
-                                      fit: BoxFit.cover,
-                                    )
-                                  : Image.memory(
+                          child: Image.network(
+                            _scanResult!.productImageUrl!,
+                            fit: BoxFit.cover,
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Center(
+                                child: CircularProgressIndicator(
+                                  value: loadingProgress.expectedTotalBytes != null
+                                      ? loadingProgress.cumulativeBytesLoaded /
+                                          loadingProgress.expectedTotalBytes!
+                                      : null,
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: Colors.grey.shade200,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.image_not_supported, 
+                                         size: 48, 
+                                         color: Colors.grey.shade400),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Image not available',
+                                      style: TextStyle(color: Colors.grey.shade600),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ] else if (_selectedImageBytes != null) ...[
+                      // Fallback to scanned photo if product image not available
+                      Container(
+                        width: double.infinity,
+                        height: 200,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Stack(
+                            children: [
+                              kIsWeb
+                                  ? Image.memory(
                                       _selectedImageBytes!,
                                       fit: BoxFit.cover,
+                                    )
+                                  : _selectedImage != null
+                                      ? Image.file(
+                                          _selectedImage!,
+                                          fit: BoxFit.cover,
+                                        )
+                                      : Image.memory(
+                                          _selectedImageBytes!,
+                                          fit: BoxFit.cover,
+                                        ),
+                              // Overlay label
+                              Positioned(
+                                bottom: 8,
+                                left: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text(
+                                    'Scanned Photo',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
                                     ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
