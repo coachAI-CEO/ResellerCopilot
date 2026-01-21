@@ -2029,27 +2029,30 @@ class SecureStorageService {
 
 ## 7. Backend Improvements 🔧
 
-### 7.1 Edge Function - Model Name Fix
-
-**CRITICAL BUG**
+### 7.1 Model Configuration Flexibility
 
 **File:** `supabase/functions/analyze-product/index.ts:6`
 
 **Current:**
 ```typescript
-const MODEL_NAME = "gemini-3-flash-preview";
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent'
 ```
 
-**Issue:** Wrong model name - should be "gemini-1.5-flash" or similar
+**Status:** The current model `gemini-3-flash-preview` is valid and working.
 
-**Fix:**
+**Optional Enhancement:**
+For better flexibility and easier model updates, consider using an environment variable:
+
 ```typescript
-// Use environment variable for flexibility
-const MODEL_NAME = Deno.env.get("GEMINI_MODEL") || "gemini-1.5-flash";
-
-// Or use the latest stable version:
-const MODEL_NAME = "gemini-1.5-flash-002"; // Latest stable as of Jan 2026
+// Allow model to be configured via environment variable
+const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-3-flash-preview";
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 ```
+
+**Benefits:**
+- Easy model switching without code changes
+- Test different models (gemini-3-flash-preview, gemini-2-flash, etc.)
+- Environment-specific model selection (preview in dev, stable in prod)
 
 ---
 
@@ -2603,7 +2606,6 @@ Authorization: Bearer <token>
 
 | Priority | Item | Effort | Impact | Category |
 |----------|------|--------|--------|----------|
-| **P0** | Fix Gemini model name (7.1) | Low | High | Backend |
 | **P0** | Add unit tests (1.1) | High | High | Testing |
 | **P0** | Extract scanner widgets (1.2) | Medium | High | Architecture |
 | **P0** | Remove blocking URL validation (7.4) | Low | High | Performance |
@@ -2631,20 +2633,7 @@ Authorization: Bearer <token>
 
 These items provide high impact with minimal effort. Recommend implementing immediately:
 
-### 1. Fix Gemini Model Name (5 minutes)
-**File:** `supabase/functions/analyze-product/index.ts:6`
-```typescript
-- const MODEL_NAME = "gemini-3-flash-preview";
-+ const MODEL_NAME = "gemini-1.5-flash-002";
-```
-
-### 2. Create Constants File (30 minutes)
-**File:** `lib/constants/app_constants.dart`
-- Extract all magic numbers
-- Define spacing, colors, durations
-- Immediate code clarity improvement
-
-### 3. Add Database Indexes (15 minutes)
+### 1. Add Database Indexes (15 minutes)
 **File:** `migrations/009_add_indexes.sql`
 ```sql
 CREATE INDEX idx_scans_user_id_created_at ON scans(user_id, created_at DESC);
@@ -2652,39 +2641,45 @@ CREATE INDEX idx_scans_barcode ON scans(barcode) WHERE barcode IS NOT NULL;
 ```
 Run: `supabase migration up`
 
-### 4. Remove URL Validation (10 minutes)
+### 2. Remove URL Validation (10 minutes)
 **File:** `supabase/functions/analyze-product/index.ts:432-433`
 - Replace network-based validation with simple URL parsing
 - Instant 1-3 second performance improvement
 
-### 5. Add Image Source Selection (20 minutes)
+### 3. Create Constants File (30 minutes)
+**File:** `lib/constants/app_constants.dart`
+- Extract all magic numbers
+- Define spacing, colors, durations
+- Immediate code clarity improvement
+
+### 4. Add Image Source Selection (20 minutes)
 **File:** `lib/screens/scanner_screen.dart`
 - Add gallery option to image picker
 - Better testing experience
 
-### 6. Add Error Tracking Setup (30 minutes)
+### 5. Add Error Tracking Setup (30 minutes)
 - Add `sentry_flutter` dependency
 - Initialize in `main.dart`
 - Wrap `runApp` in error handler
 
-### 7. Password Visibility Toggle (10 minutes)
+### 6. Password Visibility Toggle (10 minutes)
 **File:** `lib/screens/auth_screen.dart`
 - Add visibility icon button
 - Standard UX improvement
 
-### 8. Add Web Image Compression (30 minutes)
+### 7. Add Web Image Compression (30 minutes)
 **File:** `lib/services/supabase_service.dart:67`
 - Use `image` package for web compression
 - Reduce upload size and time
 
-### 9. Create .env.example (5 minutes)
+### 8. Create .env.example (5 minutes)
 **File:** `.env.example`
 ```
 SUPABASE_URL=your_supabase_url_here
 SUPABASE_ANON_KEY=your_anon_key_here
 ```
 
-### 10. Add Input Validation (20 minutes)
+### 9. Add Input Validation (20 minutes)
 **File:** `lib/utils/validators.dart`
 - Price validation with max limits
 - Barcode format validation
@@ -2695,13 +2690,13 @@ SUPABASE_ANON_KEY=your_anon_key_here
 ## Implementation Roadmap
 
 ### Phase 1: Foundation (Week 1-2)
-- ✅ Fix Gemini model name
 - ✅ Add database indexes
 - ✅ Remove blocking URL validation
 - ✅ Create constants file
 - ✅ Add error tracking
 - ✅ Set up CI/CD pipeline
 - ✅ Add basic unit tests
+- ✅ Add .env.example file
 
 ### Phase 2: Architecture (Week 3-4)
 - Extract scanner screen widgets
@@ -4262,10 +4257,10 @@ The proposed web application complements the mobile app by providing:
 **Next Steps:**
 
 **Mobile App:**
-1. Fix critical bug (Gemini model name)
-2. Implement Quick Wins
-3. Begin phased improvements
-4. Set up testing infrastructure
+1. Implement Quick Wins
+2. Begin phased improvements
+3. Set up testing infrastructure
+4. Add database indexes
 
 **Web App:**
 1. Review web architecture proposal
