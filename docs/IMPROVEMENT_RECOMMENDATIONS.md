@@ -18,22 +18,31 @@
 8. [Backend Improvements](#7-backend-improvements-)
 9. [DevOps & Deployment](#8-devops--deployment-)
 10. [Documentation](#9-documentation-)
-11. [Priority Matrix](#priority-matrix)
-12. [Quick Wins](#quick-wins)
+11. [Web Application - Research & Marketplace Management](#10-web-application---research--marketplace-management-)
+12. [Priority Matrix](#priority-matrix)
+13. [Quick Wins](#quick-wins)
 
 ---
 
 ## Executive Summary
 
-The Reseller Copilot is a well-structured mobile application with a solid foundation. However, there are significant opportunities for improvement across code architecture, UI/UX, performance, and features. This document outlines **89 specific recommendations** categorized by priority and impact.
+The Reseller Copilot is a well-structured mobile application with a solid foundation. This document outlines **89 specific recommendations** for the mobile app plus a comprehensive **Web Application architecture** for research and marketplace management.
 
-**Key Findings:**
+**Mobile App - Key Findings:**
 - ✅ Strong foundation with proper authentication, AI integration, and data persistence
 - ⚠️ Monolithic UI component (957 lines) needs refactoring
 - ⚠️ No testing infrastructure in place
 - ⚠️ Missing critical UX features (history, offline support, sharing)
 - ⚠️ Performance optimization opportunities (caching, image handling)
 - ⚠️ Limited accessibility and mobile-first UX patterns
+
+**Web App - Vision:**
+- 🌐 Companion platform for pre-purchase research and post-purchase workflow
+- 📊 Trending products discovery and market research
+- 📦 Inventory management from scan to sale
+- 🤖 AI-powered marketplace listing generation
+- 🔄 Multi-marketplace publishing (eBay, Amazon, Poshmark, Mercari)
+- 📈 Comprehensive analytics and profitability tracking
 
 ---
 
@@ -2751,32 +2760,1525 @@ Track these metrics to measure improvement impact:
 
 ---
 
+## 10. Web Application - Research & Marketplace Management 🌐
+
+### Overview
+
+The **Reseller Copilot Web Application** is a companion platform to the mobile app, focused on pre-purchase research, inventory management, and automated marketplace listing creation. While the mobile app excels at in-store scanning, the web app provides the research and post-purchase workflow tools that resellers need.
+
+### Vision & Value Proposition
+
+**Mobile App:** Quick in-store decisions ("Should I buy this?")
+**Web App:** Strategic research and selling automation ("What should I look for?" + "How do I sell it?")
+
+**Key Differentiators:**
+- Research trending products before going to stores
+- Import and manage scan history across devices
+- Track inventory from purchase to sale
+- Auto-generate marketplace listings with AI
+- Multi-marketplace publishing (eBay, Amazon, Poshmark, Mercari, etc.)
+- Analytics and profitability tracking
+
+---
+
+### 10.1 Architecture
+
+#### Tech Stack
+
+**Frontend:**
+```
+- Framework: Next.js 14+ (App Router)
+- Language: TypeScript
+- UI Library: React 18+
+- Styling: Tailwind CSS + shadcn/ui components
+- State Management: Zustand + React Query
+- Charts: Recharts or Chart.js
+- Tables: TanStack Table
+- Forms: React Hook Form + Zod validation
+```
+
+**Backend:**
+```
+- Platform: Supabase (shared with mobile app)
+- Database: PostgreSQL (extend existing schema)
+- Edge Functions: Deno (for AI operations)
+- Storage: Supabase Storage (product images)
+- Real-time: Supabase Realtime (sync with mobile)
+```
+
+**External APIs:**
+```
+- Google Gemini API: Product research, listing generation
+- eBay API: Browse, publish listings, get trends
+- Amazon Product Advertising API: Product research
+- Poshmark/Mercari APIs: Marketplace integration
+- Google Trends API: Trending product data
+- Web Scraping: Cheerio/Puppeteer for market research
+```
+
+**Deployment:**
+```
+- Web Hosting: Vercel or Netlify
+- Edge Functions: Supabase Edge Functions
+- CDN: Built-in with hosting platform
+- Domain: Custom domain (e.g., app.resellercopilot.com)
+```
+
+---
+
+### 10.2 Database Schema Extensions
+
+Extend the existing mobile app database with new tables:
+
+```sql
+-- migrations/010_web_app_tables.sql
+
+-- Product catalog for research
+CREATE TABLE product_catalog (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id),
+
+  -- Product info
+  product_name TEXT NOT NULL,
+  category TEXT,
+  brand TEXT,
+  upc_code TEXT,
+
+  -- Market data
+  avg_sell_price DECIMAL(10,2),
+  avg_buy_price DECIMAL(10,2),
+  trend_score INTEGER, -- 1-100
+  velocity_score TEXT, -- High/Med/Low
+
+  -- Research metadata
+  ebay_search_volume INTEGER,
+  amazon_bsr INTEGER, -- Best seller rank
+  google_trends_score INTEGER,
+
+  -- Sources
+  data_sources JSONB, -- {ebay: {...}, amazon: {...}, etc}
+
+  -- Timestamps
+  last_researched_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+  -- Indexes
+  CONSTRAINT unique_user_product UNIQUE(user_id, product_name, brand)
+);
+
+CREATE INDEX idx_product_catalog_user_id ON product_catalog(user_id);
+CREATE INDEX idx_product_catalog_trend_score ON product_catalog(trend_score DESC);
+CREATE INDEX idx_product_catalog_category ON product_catalog(category);
+
+-- Inventory management
+CREATE TABLE inventory (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+  scan_id UUID REFERENCES scans(id), -- Link to original scan
+
+  -- Product info
+  product_name TEXT NOT NULL,
+  brand TEXT,
+  condition TEXT NOT NULL,
+  quantity INTEGER DEFAULT 1,
+
+  -- Purchase details
+  purchase_price DECIMAL(10,2) NOT NULL,
+  purchase_location TEXT,
+  purchase_date DATE NOT NULL,
+
+  -- Storage
+  storage_location TEXT, -- e.g., "Shelf A-3"
+
+  -- Status
+  status TEXT NOT NULL DEFAULT 'in_stock',
+  -- 'in_stock', 'listed', 'sold', 'returned'
+
+  -- Images
+  images JSONB, -- Array of image URLs
+  notes TEXT,
+
+  -- Timestamps
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_inventory_user_status ON inventory(user_id, status);
+CREATE INDEX idx_inventory_purchase_date ON inventory(purchase_date DESC);
+CREATE INDEX idx_inventory_scan_id ON inventory(scan_id);
+
+-- Marketplace listings
+CREATE TABLE marketplace_listings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+  inventory_id UUID REFERENCES inventory(id),
+
+  -- Marketplace
+  marketplace TEXT NOT NULL, -- 'ebay', 'amazon', 'poshmark', 'mercari'
+  marketplace_listing_id TEXT, -- External ID from marketplace
+
+  -- Listing details
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  price DECIMAL(10,2) NOT NULL,
+  category TEXT,
+  images JSONB, -- Array of image URLs
+
+  -- Generated content
+  ai_generated_title TEXT,
+  ai_generated_description TEXT,
+  ai_generated_tags JSONB,
+
+  -- Status
+  status TEXT NOT NULL DEFAULT 'draft',
+  -- 'draft', 'published', 'active', 'sold', 'ended'
+
+  -- Marketplace specifics
+  marketplace_data JSONB, -- Platform-specific fields
+
+  -- Publishing
+  published_at TIMESTAMP WITH TIME ZONE,
+  sold_at TIMESTAMP WITH TIME ZONE,
+  sold_price DECIMAL(10,2),
+
+  -- Timestamps
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_listings_user_status ON marketplace_listings(user_id, status);
+CREATE INDEX idx_listings_marketplace ON marketplace_listings(marketplace, status);
+CREATE INDEX idx_listings_inventory_id ON marketplace_listings(inventory_id);
+
+-- Trending products watchlist
+CREATE TABLE trending_products (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+  -- Product info
+  product_name TEXT NOT NULL,
+  category TEXT,
+  brand TEXT,
+
+  -- Trend data
+  trend_score INTEGER NOT NULL, -- 1-100
+  search_volume INTEGER,
+  price_trend TEXT, -- 'rising', 'stable', 'falling'
+
+  -- Opportunities
+  avg_profit_margin DECIMAL(5,2),
+  recommended_buy_price DECIMAL(10,2),
+
+  -- Data
+  trend_data JSONB, -- Historical data
+
+  -- Timestamps
+  trending_since TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+  CONSTRAINT unique_trending_product UNIQUE(product_name, brand)
+);
+
+CREATE INDEX idx_trending_products_score ON trending_products(trend_score DESC);
+CREATE INDEX idx_trending_products_category ON trending_products(category);
+
+-- User watchlist (products they want to track)
+CREATE TABLE user_watchlist (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+
+  -- Product to watch
+  product_name TEXT NOT NULL,
+  brand TEXT,
+  category TEXT,
+
+  -- Alert settings
+  alert_on_trend BOOLEAN DEFAULT true,
+  alert_on_price_drop BOOLEAN DEFAULT true,
+  target_buy_price DECIMAL(10,2),
+
+  -- Status
+  is_active BOOLEAN DEFAULT true,
+
+  -- Timestamps
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+  CONSTRAINT unique_user_watchlist UNIQUE(user_id, product_name, brand)
+);
+
+CREATE INDEX idx_watchlist_user_active ON user_watchlist(user_id, is_active);
+
+-- Sales tracking
+CREATE TABLE sales (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) NOT NULL,
+  inventory_id UUID REFERENCES inventory(id),
+  listing_id UUID REFERENCES marketplace_listings(id),
+
+  -- Sale details
+  marketplace TEXT NOT NULL,
+  sale_price DECIMAL(10,2) NOT NULL,
+  fees DECIMAL(10,2),
+  shipping_cost DECIMAL(10,2),
+  net_profit DECIMAL(10,2) NOT NULL,
+
+  -- Timeline
+  purchase_price DECIMAL(10,2) NOT NULL,
+  purchase_date DATE NOT NULL,
+  sale_date DATE NOT NULL,
+  days_to_sell INTEGER,
+
+  -- Timestamps
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_sales_user_date ON sales(user_id, sale_date DESC);
+CREATE INDEX idx_sales_marketplace ON sales(marketplace);
+
+-- Row Level Security
+ALTER TABLE product_catalog ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE marketplace_listings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_watchlist ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
+
+-- Policies
+CREATE POLICY "Users can view their own product catalog"
+  ON product_catalog FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can manage their own product catalog"
+  ON product_catalog FOR ALL
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view their own inventory"
+  ON inventory FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can manage their own inventory"
+  ON inventory FOR ALL
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view their own listings"
+  ON marketplace_listings FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can manage their own listings"
+  ON marketplace_listings FOR ALL
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view their own watchlist"
+  ON user_watchlist FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can manage their own watchlist"
+  ON user_watchlist FOR ALL
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can view their own sales"
+  ON sales FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own sales"
+  ON sales FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- Trending products is public (read-only for all authenticated users)
+CREATE POLICY "Authenticated users can view trending products"
+  ON trending_products FOR SELECT
+  TO authenticated
+  USING (true);
+```
+
+---
+
+### 10.3 Core Features
+
+#### 10.3.1 Product Research Dashboard
+
+**Purpose:** Help resellers discover profitable products before going to stores
+
+**Features:**
+
+1. **Trending Products Feed**
+```typescript
+// Components:
+- Real-time trending products grid
+- Filters: category, price range, profit margin, trend score
+- Sort: by trend score, profit potential, recency
+- Save to watchlist
+- Get alerts when products trend
+```
+
+2. **Product Search & Analysis**
+```typescript
+interface ProductResearch {
+  productName: string;
+  brand?: string;
+
+  // Market data
+  ebayData: {
+    averagePrice: number;
+    soldListings: number;
+    activeListings: number;
+    topSellers: Listing[];
+  };
+
+  amazonData: {
+    currentPrice: number;
+    bestSellerRank: number;
+    reviewCount: number;
+    rating: number;
+  };
+
+  // Trends
+  googleTrends: {
+    interest: number; // 0-100
+    relatedQueries: string[];
+    risingQueries: string[];
+  };
+
+  // Profit analysis
+  profitability: {
+    avgBuyPrice: number;
+    avgSellPrice: number;
+    avgProfit: number;
+    avgMargin: number;
+    velocityScore: 'High' | 'Med' | 'Low';
+  };
+
+  // Recommendations
+  recommendation: {
+    shouldPursue: boolean;
+    targetBuyPrice: number;
+    estimatedProfit: number;
+    reasoning: string;
+  };
+}
+```
+
+**UI Components:**
+```tsx
+// app/research/page.tsx
+<ResearchDashboard>
+  <TrendingProductsCarousel />
+  <ProductSearchBar />
+  <CategoryFilters />
+  <ResearchResults>
+    <ProductCard />
+    <ProfitAnalysis />
+    <MarketTrends />
+  </ResearchResults>
+</ResearchDashboard>
+```
+
+3. **What to Look For** Guide
+```typescript
+// Auto-generated based on user's history and trends
+interface ShoppingList {
+  categories: Category[];
+  brands: Brand[];
+  priceRanges: PriceRange[];
+  locations: string[]; // "Check Ross for..."
+
+  hotProducts: {
+    name: string;
+    targetPrice: number;
+    estProfit: number;
+    whereToFind: string[];
+  }[];
+}
+```
+
+---
+
+#### 10.3.2 Scan Import & Sync
+
+**Purpose:** Seamlessly sync mobile scan data to web dashboard
+
+**Implementation:**
+
+1. **Real-time Sync**
+```typescript
+// Use Supabase Realtime
+const { data, error } = await supabase
+  .from('scans')
+  .select('*')
+  .eq('user_id', userId)
+  .order('created_at', { ascending: false });
+
+// Subscribe to changes
+const subscription = supabase
+  .channel('scans')
+  .on('postgres_changes',
+    {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'scans',
+      filter: `user_id=eq.${userId}`
+    },
+    (payload) => {
+      // Auto-add new scan to dashboard
+      addScanToUI(payload.new);
+    }
+  )
+  .subscribe();
+```
+
+2. **Scan Management View**
+```tsx
+// app/scans/page.tsx
+<ScanHistoryTable>
+  <Filters>
+    <VerdictFilter /> {/* BUY / PASS */}
+    <DateRangeFilter />
+    <LocationFilter />
+    <ProfitRangeFilter />
+  </Filters>
+
+  <DataTable>
+    <Column field="product_name" />
+    <Column field="verdict" />
+    <Column field="net_profit" />
+    <Column field="created_at" />
+    <Column field="actions">
+      <AddToInventoryButton />
+      <ViewDetailsButton />
+      <DeleteButton />
+    </Column>
+  </DataTable>
+
+  <BulkActions>
+    <AddSelectedToInventory />
+    <ExportSelected />
+    <DeleteSelected />
+  </BulkActions>
+</ScanHistoryTable>
+```
+
+3. **Convert Scan to Inventory**
+```typescript
+async function addScanToInventory(scanId: string) {
+  const scan = await getScan(scanId);
+
+  // Pre-fill form with scan data
+  const inventoryItem = {
+    scan_id: scanId,
+    product_name: scan.product_name,
+    condition: scan.condition,
+    purchase_price: scan.buy_price,
+    purchase_date: new Date(),
+    purchase_location: '', // User fills in
+    storage_location: '', // User fills in
+    quantity: 1,
+    status: 'in_stock',
+    images: [scan.product_image_url],
+  };
+
+  return await supabase
+    .from('inventory')
+    .insert(inventoryItem);
+}
+```
+
+---
+
+#### 10.3.3 Inventory Management
+
+**Purpose:** Track products from purchase to sale
+
+**Features:**
+
+1. **Inventory Dashboard**
+```tsx
+// app/inventory/page.tsx
+<InventoryDashboard>
+  <MetricsCards>
+    <Card title="Total Items" value={inventory.length} />
+    <Card title="Total Value" value={totalValue} />
+    <Card title="Listed Items" value={listedCount} />
+    <Card title="Avg Days to Sell" value={avgDaysToSell} />
+  </MetricsCards>
+
+  <InventoryTable>
+    <StatusFilter /> {/* in_stock, listed, sold */}
+    <SearchBar />
+
+    <ItemRow>
+      <Image />
+      <ProductName />
+      <Condition />
+      <PurchaseInfo />
+      <Status />
+      <Actions>
+        <CreateListingButton />
+        <EditButton />
+        <MarkAsSoldButton />
+      </Actions>
+    </ItemRow>
+  </InventoryTable>
+</InventoryDashboard>
+```
+
+2. **Add to Inventory**
+```tsx
+// app/inventory/new/page.tsx
+<AddInventoryForm>
+  <ProductInfo>
+    <Input name="product_name" required />
+    <Input name="brand" />
+    <Select name="condition" options={conditions} />
+    <Input name="quantity" type="number" />
+  </ProductInfo>
+
+  <PurchaseInfo>
+    <Input name="purchase_price" type="currency" required />
+    <Input name="purchase_date" type="date" required />
+    <Input name="purchase_location" />
+  </PurchaseInfo>
+
+  <Storage>
+    <Input name="storage_location" placeholder="e.g., Shelf A-3" />
+  </Storage>
+
+  <Images>
+    <ImageUploader multiple max={10} />
+  </Images>
+
+  <Notes>
+    <Textarea name="notes" placeholder="Special details, flaws, etc." />
+  </Notes>
+</AddInventoryForm>
+```
+
+3. **Inventory Item Detail**
+```tsx
+// app/inventory/[id]/page.tsx
+<InventoryDetailPage>
+  <ImageGallery images={item.images} />
+
+  <ProductDetails>
+    <Title>{item.product_name}</Title>
+    <Metadata>
+      <Field label="Condition" value={item.condition} />
+      <Field label="Purchase Price" value={item.purchase_price} />
+      <Field label="Purchase Date" value={item.purchase_date} />
+      <Field label="Location" value={item.storage_location} />
+      <Field label="Status" value={item.status} />
+    </Metadata>
+  </ProductDetails>
+
+  <Listings>
+    {item.listings.map(listing => (
+      <ListingCard
+        marketplace={listing.marketplace}
+        status={listing.status}
+        price={listing.price}
+      />
+    ))}
+
+    <CreateNewListingButton />
+  </Listings>
+
+  <Timeline>
+    <Event type="purchased" date={item.purchase_date} />
+    <Event type="added_to_inventory" date={item.created_at} />
+    {item.listings.map(l => (
+      <Event type="listed" date={l.published_at} marketplace={l.marketplace} />
+    ))}
+    {item.status === 'sold' && (
+      <Event type="sold" date={item.sold_at} />
+    )}
+  </Timeline>
+</InventoryDetailPage>
+```
+
+---
+
+#### 10.3.4 AI-Powered Listing Generator
+
+**Purpose:** Auto-generate optimized marketplace listings
+
+**Implementation:**
+
+1. **Listing Creator Wizard**
+```tsx
+// app/listings/create/page.tsx
+<ListingWizard inventoryId={inventoryId}>
+  <Step1SelectMarketplace>
+    <MarketplaceCard
+      name="eBay"
+      icon={<EbayIcon />}
+      description="Auction or Buy It Now"
+    />
+    <MarketplaceCard
+      name="Amazon"
+      icon={<AmazonIcon />}
+      description="FBA or FBM"
+    />
+    <MarketplaceCard
+      name="Poshmark"
+      icon={<PoshmarkIcon />}
+      description="Fashion & accessories"
+    />
+    <MarketplaceCard
+      name="Mercari"
+      icon={<MercariIcon />}
+      description="General marketplace"
+    />
+  </Step1SelectMarketplace>
+
+  <Step2GenerateListing>
+    <AIGenerationPanel>
+      <Button onClick={generateWithAI}>
+        <SparklesIcon /> Generate with AI
+      </Button>
+
+      {loading && <LoadingState message="Analyzing product..." />}
+
+      {generated && (
+        <>
+          <TitleField value={aiTitle} editable />
+          <DescriptionEditor value={aiDescription} />
+          <TagsInput value={aiTags} />
+          <PriceInput value={suggestedPrice} />
+
+          <CompetitorAnalysis>
+            <SimilarListing price={comp.price} views={comp.views} />
+          </CompetitorAnalysis>
+        </>
+      )}
+    </AIGenerationPanel>
+  </Step2GenerateListing>
+
+  <Step3CustomizeDetails>
+    <CategorySelector marketplace={marketplace} />
+    <ShippingOptions />
+    <ReturnPolicy />
+    <MarketplaceSpecificFields marketplace={marketplace} />
+  </Step3CustomizeDetails>
+
+  <Step4Review>
+    <ListingPreview marketplace={marketplace} data={listingData} />
+    <ValidationChecklist>
+      <CheckItem>Title length OK (80/80 characters)</CheckItem>
+      <CheckItem>At least 1 image uploaded</CheckItem>
+      <CheckItem>Price within competitive range</CheckItem>
+    </ValidationChecklist>
+  </Step4Review>
+
+  <Step5Publish>
+    <PublishOptions>
+      <Radio value="draft" label="Save as draft" />
+      <Radio value="schedule" label="Schedule for later" />
+      <Radio value="publish" label="Publish now" />
+    </PublishOptions>
+
+    <Button onClick={publishListing}>
+      Publish to {marketplace}
+    </Button>
+  </Step5Publish>
+</ListingWizard>
+```
+
+2. **AI Listing Generation Edge Function**
+```typescript
+// supabase/functions/generate-listing/index.ts
+import { serve } from 'std/server';
+import Anthropic from '@anthropic-ai/sdk';
+
+serve(async (req) => {
+  const { inventoryItem, marketplace } = await req.json();
+
+  // Get competitive data
+  const competitors = await fetchCompetitors(
+    inventoryItem.product_name,
+    marketplace
+  );
+
+  // Generate with AI
+  const prompt = `
+You are an expert marketplace listing creator. Create an optimized ${marketplace} listing.
+
+Product: ${inventoryItem.product_name}
+Condition: ${inventoryItem.condition}
+Purchase Price: $${inventoryItem.purchase_price}
+
+Competitor Analysis:
+${competitors.map(c => `- ${c.title}: $${c.price} (${c.sales} sold)`).join('\n')}
+
+Generate:
+1. Attention-grabbing title (${MARKETPLACE_LIMITS[marketplace].titleLength} chars max)
+2. Detailed, compelling description with:
+   - Key features and benefits
+   - Condition details
+   - Shipping info
+   - Keywords for SEO
+3. Relevant tags/keywords (10-15)
+4. Suggested price based on competitive analysis
+5. Category recommendation
+
+Output JSON format:
+{
+  "title": "...",
+  "description": "...",
+  "tags": ["..."],
+  "suggestedPrice": 0.00,
+  "category": "...",
+  "reasoning": "..."
+}
+`;
+
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-5-20250929',
+    max_tokens: 2000,
+    messages: [{
+      role: 'user',
+      content: prompt
+    }]
+  });
+
+  const listing = JSON.parse(response.content[0].text);
+
+  return new Response(JSON.stringify(listing), {
+    headers: { 'Content-Type': 'application/json' }
+  });
+});
+```
+
+3. **Marketplace Publishing**
+```typescript
+// lib/marketplace-integrations/ebay.ts
+export async function publishToEbay(listing: Listing) {
+  const ebayApi = new EbayAPI({
+    clientId: process.env.EBAY_CLIENT_ID,
+    clientSecret: process.env.EBAY_CLIENT_SECRET,
+    refreshToken: user.ebayRefreshToken,
+  });
+
+  const item = {
+    title: listing.title,
+    description: listing.description,
+    price: listing.price,
+    categoryId: listing.marketplace_data.categoryId,
+    images: listing.images,
+    condition: mapCondition(listing.condition),
+    shippingPolicy: listing.marketplace_data.shippingPolicy,
+    returnPolicy: listing.marketplace_data.returnPolicy,
+  };
+
+  const result = await ebayApi.trading.AddFixedPriceItem(item);
+
+  // Update listing with eBay ID
+  await supabase
+    .from('marketplace_listings')
+    .update({
+      marketplace_listing_id: result.ItemID,
+      status: 'published',
+      published_at: new Date(),
+    })
+    .eq('id', listing.id);
+
+  return result;
+}
+
+// Similar implementations for:
+// - lib/marketplace-integrations/amazon.ts
+// - lib/marketplace-integrations/poshmark.ts
+// - lib/marketplace-integrations/mercari.ts
+```
+
+---
+
+#### 10.3.5 Multi-Marketplace Management
+
+**Purpose:** Manage listings across multiple platforms from one dashboard
+
+**Features:**
+
+1. **Unified Listings Dashboard**
+```tsx
+// app/listings/page.tsx
+<ListingsDashboard>
+  <MetricsOverview>
+    <Metric title="Active Listings" value={activeCount} />
+    <Metric title="Total Views" value={totalViews} />
+    <Metric title="Pending Sales" value={pendingSales} />
+    <Metric title="Avg Price" value={avgPrice} />
+  </MetricsOverview>
+
+  <MarketplaceTabs>
+    <Tab name="All" />
+    <Tab name="eBay" icon={<EbayIcon />} count={ebayCount} />
+    <Tab name="Amazon" icon={<AmazonIcon />} count={amazonCount} />
+    <Tab name="Poshmark" icon={<PoshmarkIcon />} count={poshmarkCount} />
+    <Tab name="Mercari" icon={<MercariIcon />} count={mercariCount} />
+  </MarketplaceTabs>
+
+  <ListingsTable>
+    <Row>
+      <Image />
+      <Title />
+      <Marketplace />
+      <Status badge />
+      <Price />
+      <Views />
+      <Actions>
+        <ViewOnMarketplaceButton />
+        <EditListingButton />
+        <EndListingButton />
+        <CrossListButton /> {/* List on another marketplace */}
+      </Actions>
+    </Row>
+  </ListingsTable>
+</ListingsDashboard>
+```
+
+2. **Cross-Listing Feature**
+```typescript
+// One-click list same product on multiple marketplaces
+async function crossListProduct(
+  sourceListingId: string,
+  targetMarketplaces: string[]
+) {
+  const sourceListing = await getListing(sourceListingId);
+
+  const crossListings = await Promise.all(
+    targetMarketplaces.map(async (marketplace) => {
+      // Adapt listing for each marketplace
+      const adapted = await adaptListingForMarketplace(
+        sourceListing,
+        marketplace
+      );
+
+      // Create new listing
+      const newListing = await createListing({
+        ...adapted,
+        inventory_id: sourceListing.inventory_id,
+        marketplace,
+      });
+
+      // Optionally auto-publish
+      if (autoPublish) {
+        await publishListing(newListing.id, marketplace);
+      }
+
+      return newListing;
+    })
+  );
+
+  return crossListings;
+}
+```
+
+---
+
+#### 10.3.6 Analytics & Reporting
+
+**Purpose:** Track profitability and optimize reselling strategy
+
+**Features:**
+
+1. **Profitability Dashboard**
+```tsx
+// app/analytics/page.tsx
+<AnalyticsDashboard>
+  <KPICards>
+    <Card title="Total Revenue" value={totalRevenue} trend="+12%" />
+    <Card title="Total Profit" value={totalProfit} trend="+8%" />
+    <Card title="Avg Profit/Item" value={avgProfit} />
+    <Card title="ROI" value={roi} />
+  </KPICards>
+
+  <Charts>
+    <RevenueChart
+      data={monthlyRevenue}
+      title="Revenue Over Time"
+    />
+
+    <ProfitByCategory
+      data={categoryProfits}
+      title="Most Profitable Categories"
+    />
+
+    <VelocityChart
+      data={daysToSell}
+      title="Average Days to Sell"
+    />
+
+    <MarketplaceComparison
+      data={marketplaceMetrics}
+      title="Performance by Marketplace"
+    />
+  </Charts>
+
+  <TopPerformers>
+    <Table title="Top Selling Products">
+      {topProducts.map(p => (
+        <Row>
+          <Cell>{p.name}</Cell>
+          <Cell>{p.unitsSold}</Cell>
+          <Cell>${p.totalProfit}</Cell>
+        </Row>
+      ))}
+    </Table>
+
+    <Table title="Top Categories">
+      {topCategories.map(c => (
+        <Row>
+          <Cell>{c.name}</Cell>
+          <Cell>{c.itemsSold}</Cell>
+          <Cell>${c.totalRevenue}</Cell>
+        </Row>
+      ))}
+    </Table>
+  </TopPerformers>
+
+  <ExportButtons>
+    <Button onClick={exportPDF}>Export PDF Report</Button>
+    <Button onClick={exportCSV}>Export CSV</Button>
+  </ExportButtons>
+</AnalyticsDashboard>
+```
+
+2. **Inventory Performance**
+```tsx
+<InventoryAnalytics>
+  <AgeAnalysis>
+    <Chart data={inventoryAge} />
+    <Alert type="warning">
+      You have 12 items over 90 days old
+    </Alert>
+  </AgeAnalysis>
+
+  <TurnoverRate>
+    <Metric value={turnoverRate} label="Inventory Turnover" />
+    <Comparison benchmark={industryAvg} />
+  </TurnoverRate>
+
+  <DeadStock>
+    <List items={slowMovers}>
+      <Suggestion>Consider price reduction</Suggestion>
+      <Suggestion>Try different marketplace</Suggestion>
+    </List>
+  </DeadStock>
+</InventoryAnalytics>
+```
+
+---
+
+### 10.4 User Workflows
+
+#### Workflow 1: Research Before Shopping
+
+```
+1. User logs into web app
+2. Checks "Trending Products" feed
+3. Finds "Nike Air Max" is trending high
+4. Clicks to research product
+5. Sees:
+   - eBay avg sell price: $89
+   - Amazon current price: $95
+   - Google Trends: Rising
+   - Recommended buy price: < $30
+   - Estimated profit: $45
+6. Adds to "Watchlist"
+7. Gets shopping list: "Look for Nike Air Max at Ross, TJ Maxx"
+8. Goes to store with mobile app
+```
+
+#### Workflow 2: Scan to Sale
+
+```
+1. In-store: Scan product with mobile app
+2. Gets "BUY" verdict
+3. Purchases item
+4. Back home: Opens web app
+5. Sees new scan auto-synced
+6. Clicks "Add to Inventory"
+7. Fills in:
+   - Storage location: "Shelf A-3"
+   - Photos: Upload 5 images
+8. Clicks "Create Listing"
+9. Selects "eBay"
+10. Clicks "Generate with AI"
+11. Reviews AI-generated:
+    - Title: "Nike Air Max 270 Men's Size 10 Triple Black NEW"
+    - Description: (optimized copy)
+    - Price: $89.99
+12. Makes minor edits
+13. Clicks "Publish Now"
+14. Listing goes live on eBay
+15. (Optional) Clicks "Cross-list to Poshmark"
+```
+
+#### Workflow 3: Analytics Review
+
+```
+1. Weekly: Check analytics dashboard
+2. Reviews:
+   - Revenue this week: $450
+   - Profit this week: $280
+   - Items sold: 6
+   - Avg days to sell: 12
+3. Sees "Nike shoes" are top category
+4. Sees "Electronics" have slow velocity
+5. Adjusts strategy:
+   - Focus more on Nike products
+   - Price drop on old electronics
+6. Exports monthly report PDF for taxes
+```
+
+---
+
+### 10.5 Technical Implementation Details
+
+#### 10.5.1 Project Structure
+
+```
+web-app/
+├── app/                          # Next.js App Router
+│   ├── (auth)/
+│   │   ├── login/
+│   │   └── signup/
+│   ├── (dashboard)/
+│   │   ├── layout.tsx           # Dashboard layout with sidebar
+│   │   ├── page.tsx             # Dashboard home
+│   │   ├── research/
+│   │   │   ├── page.tsx         # Product research
+│   │   │   └── [product]/
+│   │   ├── scans/
+│   │   │   ├── page.tsx         # Scan history
+│   │   │   └── [id]/
+│   │   ├── inventory/
+│   │   │   ├── page.tsx         # Inventory list
+│   │   │   ├── new/
+│   │   │   └── [id]/
+│   │   ├── listings/
+│   │   │   ├── page.tsx         # All listings
+│   │   │   ├── create/
+│   │   │   └── [id]/
+│   │   ├── analytics/
+│   │   │   └── page.tsx
+│   │   ├── watchlist/
+│   │   │   └── page.tsx
+│   │   └── settings/
+│   ├── api/                      # API routes
+│   │   ├── research/
+│   │   ├── trending/
+│   │   ├── listings/
+│   │   └── webhooks/
+│   ├── layout.tsx
+│   └── globals.css
+├── components/
+│   ├── ui/                       # shadcn/ui components
+│   ├── research/
+│   │   ├── TrendingProducts.tsx
+│   │   ├── ProductSearch.tsx
+│   │   └── ResearchResults.tsx
+│   ├── inventory/
+│   │   ├── InventoryTable.tsx
+│   │   ├── AddInventoryForm.tsx
+│   │   └── InventoryCard.tsx
+│   ├── listings/
+│   │   ├── ListingWizard.tsx
+│   │   ├── AIGenerator.tsx
+│   │   └── MarketplaceSelector.tsx
+│   └── analytics/
+│       ├── Charts.tsx
+│       └── Metrics.tsx
+├── lib/
+│   ├── supabase/
+│   │   ├── client.ts
+│   │   ├── server.ts
+│   │   └── types.ts
+│   ├── marketplace-integrations/
+│   │   ├── ebay.ts
+│   │   ├── amazon.ts
+│   │   ├── poshmark.ts
+│   │   └── mercari.ts
+│   ├── api-clients/
+│   │   ├── gemini.ts
+│   │   └── trends.ts
+│   ├── utils/
+│   └── hooks/
+├── stores/                       # Zustand stores
+│   ├── useInventoryStore.ts
+│   ├── useListingsStore.ts
+│   └── useResearchStore.ts
+├── supabase/
+│   ├── functions/
+│   │   ├── generate-listing/
+│   │   ├── research-product/
+│   │   └── sync-trending/
+│   └── migrations/
+│       └── 010_web_app_tables.sql
+├── public/
+├── styles/
+├── types/
+├── .env.local
+├── next.config.js
+├── tailwind.config.ts
+└── package.json
+```
+
+#### 10.5.2 Key Dependencies
+
+```json
+{
+  "dependencies": {
+    "next": "^14.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.3.3",
+
+    "@supabase/supabase-js": "^2.39.0",
+    "@supabase/auth-helpers-nextjs": "^0.9.0",
+
+    "@tanstack/react-query": "^5.17.0",
+    "@tanstack/react-table": "^8.11.0",
+    "zustand": "^4.4.7",
+
+    "@radix-ui/react-*": "latest",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.0",
+    "tailwind-merge": "^2.2.0",
+
+    "react-hook-form": "^7.49.0",
+    "zod": "^3.22.4",
+    "@hookform/resolvers": "^3.3.4",
+
+    "recharts": "^2.10.0",
+    "date-fns": "^3.0.0",
+    "lucide-react": "^0.309.0",
+
+    "@anthropic-ai/sdk": "^0.12.0",
+    "ebay-api": "^5.0.0",
+    "cheerio": "^1.0.0-rc.12",
+    "puppeteer": "^21.7.0"
+  }
+}
+```
+
+#### 10.5.3 Edge Functions
+
+```typescript
+// supabase/functions/research-product/index.ts
+/**
+ * Research a product across multiple sources
+ * Returns comprehensive market analysis
+ */
+serve(async (req) => {
+  const { productName, brand } = await req.json();
+
+  // Parallel research across sources
+  const [ebayData, amazonData, trendsData] = await Promise.all([
+    researchEbay(productName, brand),
+    researchAmazon(productName, brand),
+    getGoogleTrends(productName),
+  ]);
+
+  // AI analysis
+  const analysis = await analyzeWithAI({
+    productName,
+    brand,
+    ebayData,
+    amazonData,
+    trendsData,
+  });
+
+  return new Response(JSON.stringify(analysis));
+});
+
+// supabase/functions/sync-trending/index.ts
+/**
+ * Cron job to update trending products daily
+ */
+Deno.cron("Update trending products", "0 0 * * *", async () => {
+  const trendingProducts = await fetchTrendingFromAPIs();
+
+  await supabase
+    .from('trending_products')
+    .upsert(trendingProducts);
+});
+```
+
+---
+
+### 10.6 Integration with Mobile App
+
+**Shared Infrastructure:**
+- Same Supabase project
+- Same authentication system
+- Same database (extended schema)
+- Real-time sync via Supabase Realtime
+
+**Data Flow:**
+```
+Mobile App → Supabase (scans table) → Real-time → Web App
+Web App → Supabase (inventory) → Real-time → Mobile App (future)
+```
+
+**Future Mobile Features:**
+- Show inventory count badge
+- Quick lookup: "Do I already have this?"
+- Sync shopping list from web research
+- Alert when scanning watchlist items
+
+---
+
+### 10.7 MVP Features (Phase 1)
+
+**Priority: P0 - Launch Blockers**
+
+1. ✅ User authentication (shared with mobile)
+2. ✅ Scan import and display
+3. ✅ Basic inventory management (CRUD)
+4. ✅ Simple listing creator (manual)
+5. ✅ eBay integration (publish listings)
+6. ✅ Basic analytics (revenue, profit)
+
+**Priority: P1 - Core Value**
+
+7. ✅ AI listing generator
+8. ✅ Trending products feed
+9. ✅ Product research tool
+10. ✅ Multi-marketplace support (add Poshmark)
+11. ✅ Advanced analytics
+
+**Priority: P2 - Enhanced**
+
+12. Watchlist & alerts
+13. Cross-listing automation
+14. Batch operations
+15. Mobile app integration (show inventory)
+16. Advanced reporting (PDF exports)
+
+---
+
+### 10.8 Development Roadmap
+
+#### Phase 1: Foundation (Weeks 1-3)
+```
+Week 1:
+- Set up Next.js project
+- Configure Supabase client
+- Create database migrations
+- Build authentication pages
+
+Week 2:
+- Create dashboard layout
+- Scan import page
+- Basic inventory CRUD
+- Image upload to Supabase Storage
+
+Week 3:
+- eBay API integration
+- Manual listing creator
+- Publish to eBay functionality
+```
+
+#### Phase 2: AI & Research (Weeks 4-6)
+```
+Week 4:
+- AI listing generator edge function
+- Listing wizard UI
+- Competitor analysis
+
+Week 5:
+- Product research API integrations
+- Research dashboard UI
+- Trending products feed
+
+Week 6:
+- Google Trends integration
+- Profitability calculator
+- Product recommendations
+```
+
+#### Phase 3: Multi-Marketplace (Weeks 7-9)
+```
+Week 7:
+- Poshmark API integration
+- Marketplace adapter pattern
+- Cross-listing UI
+
+Week 8:
+- Amazon integration (basic)
+- Mercari integration
+- Unified listings dashboard
+
+Week 9:
+- Marketplace sync (status updates)
+- Webhook handlers
+- Error handling & retries
+```
+
+#### Phase 4: Analytics & Polish (Weeks 10-12)
+```
+Week 10:
+- Analytics dashboard
+- Charts and reports
+- Export functionality
+
+Week 11:
+- Watchlist feature
+- Alerts system
+- Email notifications
+
+Week 12:
+- Performance optimization
+- Testing
+- Bug fixes
+- Documentation
+```
+
+---
+
+### 10.9 Success Metrics
+
+**User Engagement:**
+- Daily active users (DAU)
+- Time spent in app
+- Features used per session
+- Retention rate (Day 7, Day 30)
+
+**Business Metrics:**
+- Listings created per user
+- Cross-listing adoption rate
+- Average profit per listing
+- Time saved vs manual listing
+
+**Technical Metrics:**
+- API response times < 2s
+- AI generation time < 10s
+- Listing publish success rate > 95%
+- Uptime > 99.5%
+
+---
+
+### 10.10 Competitive Advantages
+
+**vs. Manual Listing:**
+- 10x faster with AI generation
+- Better SEO optimization
+- Consistent quality
+
+**vs. Other Tools:**
+- Integrated with in-store scanning
+- AI-powered research & generation
+- Multi-marketplace from single interface
+- Profitability tracking built-in
+
+**Unique Features:**
+- Mobile-to-web workflow
+- Trending products research
+- AI listing optimization
+- Comprehensive analytics
+
+---
+
+### 10.11 Monetization Strategy (Future)
+
+**Free Tier:**
+- Up to 10 active listings
+- Basic AI generation (10/month)
+- Single marketplace
+- Basic analytics
+
+**Pro Tier ($29/month):**
+- Unlimited listings
+- Unlimited AI generation
+- All marketplaces
+- Advanced analytics
+- Priority support
+- Cross-listing automation
+
+**Enterprise Tier ($99/month):**
+- Everything in Pro
+- Team collaboration
+- Bulk operations
+- API access
+- Custom integrations
+- Dedicated support
+
+---
+
 ## Conclusion
 
-This comprehensive review identified **89 specific improvements** across 10 categories. The codebase has a solid foundation but significant opportunities exist for:
+This comprehensive review identified **89 specific improvements** across 10 categories for the mobile app, plus a complete **Web Application architecture** for research and marketplace management. The codebase has a solid foundation but significant opportunities exist for:
 
 1. **Code Quality** - Refactoring monolithic components, adding tests
 2. **Performance** - Caching, optimization, database indexes
 3. **User Experience** - Missing features, better UI/UX patterns
 4. **Production Readiness** - Monitoring, error tracking, CI/CD
 
-Implementing the **Quick Wins** section first will provide immediate value with minimal effort. Following the phased roadmap will systematically improve the application over 10 weeks.
+### Mobile App Improvements
 
-**Estimated Total Effort:** 8-10 weeks (1 full-time developer)
+Implementing the **Quick Wins** section first will provide immediate value with minimal effort. Following the phased roadmap will systematically improve the mobile application over 10 weeks.
+
+**Estimated Effort:** 8-10 weeks (1 full-time developer)
 
 **Expected Outcome:**
 - More maintainable codebase
 - Better user experience
-- Production-ready application
+- Production-ready mobile application
 - Foundation for scaling
+
+### Web Application
+
+The proposed web application complements the mobile app by providing:
+
+1. **Pre-Purchase Research** - Discover trending products and opportunities
+2. **Inventory Management** - Track items from purchase to sale
+3. **Listing Automation** - AI-generated marketplace listings
+4. **Multi-Marketplace** - Publish to eBay, Amazon, Poshmark, Mercari
+5. **Analytics** - Profitability tracking and business insights
+
+**Estimated Effort:** 12 weeks (1 full-time developer)
+
+**Tech Stack:**
+- Next.js 14+ with TypeScript
+- Supabase (shared with mobile)
+- AI: Claude API for listing generation
+- Integrations: eBay, Amazon, Poshmark, Mercari APIs
+
+**Development Phases:**
+- Phase 1 (Weeks 1-3): Foundation & inventory
+- Phase 2 (Weeks 4-6): AI & research features
+- Phase 3 (Weeks 7-9): Multi-marketplace integration
+- Phase 4 (Weeks 10-12): Analytics & polish
+
+### Complete Platform
+
+**Combined Value:**
+- **Mobile:** In-store scanning and instant profitability decisions
+- **Web:** Research, inventory management, and selling automation
+- **Together:** Complete reseller workflow from research → scan → inventory → list → sell → analyze
 
 ---
 
 **Next Steps:**
+
+**Mobile App:**
+1. Fix critical bug (Gemini model name)
+2. Implement Quick Wins
+3. Begin phased improvements
+4. Set up testing infrastructure
+
+**Web App:**
+1. Review web architecture proposal
+2. Set up Next.js project
+3. Create database migrations
+4. Build MVP (inventory + basic listing)
+5. Add AI features
+6. Integrate marketplaces
+
+**Both:**
 1. Review and prioritize recommendations with team
 2. Create GitHub issues for approved items
-3. Begin with Quick Wins
-4. Follow phased implementation roadmap
-5. Track success metrics
+3. Track success metrics
+4. Iterate based on user feedback
 
 **Questions or feedback?** Contact the development team.
