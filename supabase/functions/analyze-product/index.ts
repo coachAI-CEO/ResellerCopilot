@@ -395,42 +395,36 @@ Summary: [Final verdict - best item? Good buy? Pass? Action recommendation]"`
     const amazonPrice = analysisResult.amazon_price ? parseFloat(analysisResult.amazon_price) : null
     const amazonUrl = analysisResult.amazon_url || null
     const currentPrice = analysisResult.current_price ? parseFloat(analysisResult.current_price) : null
-    
-      // Helper to validate that a marketplace URL actually resolves (not 404).
-      // Uses a GET request with a common User-Agent to reduce chance of bot blocking.
-      async function validateUrl(url: string | null) {
-        if (!url) return null
-        try {
-          const resp = await fetch(url, {
-            method: 'GET',
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            },
-          })
-          // Treat 2xx and 3xx as valid (followed redirects ok)
-          if (resp && resp.status >= 200 && resp.status < 400) {
-            return url
-          }
-          console.warn('validateUrl: non-OK status', { url, status: resp.status })
-          return null
-        } catch (err) {
-          console.warn('validateUrl error for', url, err)
-          return null
-        }
-      }
     const marketPriceSource = analysisResult.market_price_source || 'Market analysis'
     const salesTaxRate = analysisResult.sales_tax_rate ? parseFloat(analysisResult.sales_tax_rate) : 8
     const salesTaxAmount = analysisResult.sales_tax_amount ? parseFloat(analysisResult.sales_tax_amount) : (store_price * salesTaxRate / 100)
     const feePercentage = analysisResult.fee_percentage ? parseFloat(analysisResult.fee_percentage) : 15
     const feesAmount = analysisResult.fees_amount ? parseFloat(analysisResult.fees_amount) : (marketPrice * 0.15)
     const shippingCost = analysisResult.shipping_cost ? parseFloat(analysisResult.shipping_cost) : null
-    const profitCalculation = analysisResult.profit_calculation || 
+    const profitCalculation = analysisResult.profit_calculation ||
       `$${marketPrice.toFixed(2)} market price - $${store_price.toFixed(2)} buy price - $${salesTaxAmount.toFixed(2)} sales tax (${salesTaxRate}%) - $${feesAmount.toFixed(2)} fees (${feePercentage}%)${shippingCost ? ` - $${shippingCost.toFixed(2)} shipping` : ''} = $${netProfit.toFixed(2)} profit`
 
-    // Validate marketplace URLs and prepare helpful search fallbacks
-    const validEbayUrl = await validateUrl(ebayUrl)
-    const validAmazonUrl = await validateUrl(amazonUrl)
+    // Simple URL validation without network requests (much faster)
+    // Just verify URLs are well-formed and from expected marketplaces
+    function isValidMarketplaceUrl(url: string | null, expectedDomain: string): string | null {
+      if (!url) return null
+      try {
+        const parsed = new URL(url)
+        // Check protocol and domain
+        if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+            parsed.hostname.includes(expectedDomain)) {
+          return url
+        }
+        console.warn(`URL validation failed: ${url} (expected ${expectedDomain})`)
+        return null
+      } catch (err) {
+        console.warn(`Invalid URL format: ${url}`, err)
+        return null
+      }
+    }
+
+    const validEbayUrl = isValidMarketplaceUrl(ebayUrl, 'ebay.com')
+    const validAmazonUrl = isValidMarketplaceUrl(amazonUrl, 'amazon.com')
 
     // Fallback search URLs (useful if the AI-provided direct link is dead)
     const ebaySearchUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(productName)}`

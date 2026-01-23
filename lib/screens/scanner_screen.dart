@@ -37,9 +37,64 @@ class _ScannerScreenState extends State<ScannerScreen> {
   }
 
   Future<void> _pickImage() async {
+    // Show bottom sheet to choose between camera and gallery
+    final ImageSource? source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Handle
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Title
+                Text(
+                  'Select Image Source',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 16),
+                // Camera option
+                ListTile(
+                  leading: Icon(Icons.camera_alt, color: Colors.blue.shade700, size: 28),
+                  title: const Text('Take Photo'),
+                  subtitle: const Text('Use camera to capture product'),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                ),
+                // Gallery option
+                ListTile(
+                  leading: Icon(Icons.photo_library, color: Colors.blue.shade700, size: 28),
+                  title: const Text('Choose from Gallery'),
+                  subtitle: const Text('Select existing photo'),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    // If user canceled, return
+    if (source == null) return;
+
+    // Pick image from selected source
     try {
       final XFile? image = await _imagePicker.pickImage(
-        source: ImageSource.camera,
+        source: source,
         imageQuality: 85,
       );
 
@@ -48,7 +103,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
         setState(() {
           _selectedImageBytes = imageBytes;
           if (!kIsWeb) {
-          _selectedImage = File(image.path);
+            _selectedImage = File(image.path);
           }
           _scanResult = null; // Clear previous result
         });
