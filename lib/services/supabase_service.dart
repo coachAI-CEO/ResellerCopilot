@@ -292,4 +292,24 @@ class SupabaseService {
       throw Exception('Error fetching scans: $e');
     }
   }
+
+  /// Deletes a scan by ID
+  Future<void> deleteScan(String scanId) async {
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      await _supabase
+        .from('scans')
+        .delete()
+        .eq('id', scanId)
+        .eq('user_id', user.id); // Ensure user can only delete their own scans
+
+      debugPrint('Deleted scan: $scanId');
+    } catch (e) {
+      throw Exception('Error deleting scan: $e');
+    }
+  }
 }

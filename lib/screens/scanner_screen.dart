@@ -6,7 +6,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/supabase_service.dart';
+import '../services/cache_service.dart';
+import '../services/offline_service.dart';
 import '../models/scan_result.dart';
+import 'history_screen.dart';
+import 'settings_screen.dart';
 
 class ScannerScreen extends StatefulWidget {
   final SupabaseService supabaseService;
@@ -30,16 +34,83 @@ class _ScannerScreenState extends State<ScannerScreen> {
   bool _isAnalyzing = false;
   ScanResult? _scanResult;
 
+  // Services
+  late final CacheService _cacheService;
+  late final OfflineService _offlineService;
+
+  @override
+  void initState() {
+    super.initState();
+    _cacheService = CacheService();
+    _offlineService = OfflineService(widget.supabaseService);
+  }
+
   @override
   void dispose() {
     _priceController.dispose();
+    _offlineService.dispose();
     super.dispose();
   }
 
   Future<void> _pickImage() async {
+    // Show bottom sheet to choose between camera and gallery
+    final ImageSource? source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Handle
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Title
+                Text(
+                  'Select Image Source',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 16),
+                // Camera option
+                ListTile(
+                  leading: Icon(Icons.camera_alt, color: Colors.blue.shade700, size: 28),
+                  title: const Text('Take Photo'),
+                  subtitle: const Text('Use camera to capture product'),
+                  onTap: () => Navigator.pop(context, ImageSource.camera),
+                ),
+                // Gallery option
+                ListTile(
+                  leading: Icon(Icons.photo_library, color: Colors.blue.shade700, size: 28),
+                  title: const Text('Choose from Gallery'),
+                  subtitle: const Text('Select existing photo'),
+                  onTap: () => Navigator.pop(context, ImageSource.gallery),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    // If user canceled, return
+    if (source == null) return;
+
+    // Pick image from selected source
     try {
       final XFile? image = await _imagePicker.pickImage(
-        source: ImageSource.camera,
+        source: source,
         imageQuality: 85,
       );
 
@@ -48,7 +119,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
         setState(() {
           _selectedImageBytes = imageBytes;
           if (!kIsWeb) {
-          _selectedImage = File(image.path);
+            _selectedImage = File(image.path);
           }
           _scanResult = null; // Clear previous result
         });
@@ -92,8 +163,53 @@ class _ScannerScreenState extends State<ScannerScreen> {
     });
 
     try {
-      // Analyze the product
-      final result = await widget.supabaseService.analyzeItem(
+      // Check cache first (if barcode available)
+      ScanResult? cachedResult;
+      if (_barcode != null && _barcode!.isNotEmpty) {
+        cachedResult = await _cacheService.getCachedResultByBarcode(_barcode!);
+        if (cachedResult != null) {
+          // Update cached result with current price
+          cachedResult = ScanResult(
+            productName: cachedResult.productName,
+            buyPrice: price,
+            marketPrice: cachedResult.marketPrice,
+            netProfit: cachedResult.marketPrice - price,
+            verdict: cachedResult.verdict,
+            velocityScore: cachedResult.velocityScore,
+            barcode: cachedResult.barcode,
+            ebayPrice: cachedResult.ebayPrice,
+            ebayUrl: cachedResult.ebayUrl,
+            ebaySearchUrl: cachedResult.ebaySearchUrl,
+            amazonPrice: cachedResult.amazonPrice,
+            amazonUrl: cachedResult.amazonUrl,
+            amazonSearchUrl: cachedResult.amazonSearchUrl,
+            currentPrice: cachedResult.currentPrice,
+            marketPriceSource: cachedResult.marketPriceSource,
+            salesTaxRate: cachedResult.salesTaxRate,
+            salesTaxAmount: cachedResult.salesTaxAmount,
+            feePercentage: cachedResult.feePercentage,
+            feesAmount: cachedResult.feesAmount,
+            shippingCost: cachedResult.shippingCost,
+            profitCalculation: cachedResult.profitCalculation,
+            marketAnalysis: cachedResult.marketAnalysis,
+            condition: _condition,
+            productImageUrl: cachedResult.productImageUrl,
+          );
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Using cached result (faster!)'),
+                backgroundColor: Colors.blue,
+                duration: Duration(seconds: 1),
+              ),
+            );
+          }
+        }
+      }
+
+      // Analyze the product if not cached
+      final result = cachedResult ?? await widget.supabaseService.analyzeItem(
         image: kIsWeb ? null : _selectedImage!,
         imageBytes: _selectedImageBytes!,
         barcode: _barcode,
@@ -101,8 +217,39 @@ class _ScannerScreenState extends State<ScannerScreen> {
         condition: _condition,
       );
 
-      // Save the scan to the database
-      final savedResult = await widget.supabaseService.saveScan(result);
+      // Try to save the scan to the database
+      ScanResult savedResult;
+      try {
+        savedResult = await widget.supabaseService.saveScan(result);
+
+        // Cache successful result
+        if (_barcode != null && _barcode!.isNotEmpty) {
+          await _cacheService.cacheResultByBarcode(
+            barcode: _barcode!,
+            result: savedResult,
+          );
+        }
+      } catch (saveError) {
+        // If save fails, queue for offline retry
+        await _offlineService.queueScan(
+          QueuedScan(
+            scanResult: result,
+            queuedAt: DateTime.now(),
+          ),
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Scan queued for retry when online'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+
+        // Use unsaved result for display
+        savedResult = result;
+      }
 
       setState(() {
         _scanResult = savedResult;
@@ -113,8 +260,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Analysis complete: ${savedResult.verdict}'),
-            backgroundColor: savedResult.verdict == 'BUY' 
-                ? Colors.green 
+            backgroundColor: savedResult.verdict == 'BUY'
+                ? Colors.green
                 : Colors.orange,
           ),
         );
@@ -152,6 +299,35 @@ class _ScannerScreenState extends State<ScannerScreen> {
         backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Scan History',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => HistoryScreen(
+                    supabaseService: widget.supabaseService,
+                  ),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SettingsScreen(
+                    cacheService: _cacheService,
+                    offlineService: _offlineService,
+                  ),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Sign Out',
