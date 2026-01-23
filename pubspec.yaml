@@ -30,6 +30,12 @@ dependencies:
   # Local Storage & Caching
   shared_preferences: ^2.2.2
 
+  # Date formatting
+  intl: ^0.18.0
+
+  # Network connectivity
+  connectivity_plus: ^5.0.0
+
   # JSON Serialization
   freezed_annotation: ^3.1.0
   json_annotation: ^4.8.1
